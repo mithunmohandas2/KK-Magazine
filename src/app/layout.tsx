@@ -1,0 +1,3 @@
+import './globals.css';import type {Metadata} from 'next';
+export const metadata:Metadata={title:'Folio — Digital Magazine Studio',description:'A premium digital magazine and editorial studio',manifest:'/manifest.webmanifest'};
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{__html:"try{var t=localStorage.getItem('folio-theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}"}}/></head><body>{children}</body></html>}
