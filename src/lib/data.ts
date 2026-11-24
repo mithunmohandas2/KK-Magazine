@@ -67,9 +67,13 @@ export type ReaderPageSummary = Pick<PageContent, "id" | "title"> & {
 export type ReaderMagazine = Pick<Magazine, "title" | "cover"> & {
   pages: ReaderPageSummary[];
 };
+export type ReaderAuthor = Pick<
+  Author,
+  "id" | "name" | "role" | "photo" | "photoAssetId"
+>;
 export type ReaderPage = {
   page: PageContent;
-  authors: Pick<Author, "id" | "name">[];
+  authors: ReaderAuthor[];
 };
 export const magazineName = "മൊഴി";
 export const defaultCoverHeading = "കരിയാത്തൻ കാവിൽ മാസിക";

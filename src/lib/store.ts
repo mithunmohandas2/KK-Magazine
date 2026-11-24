@@ -98,7 +98,13 @@ async function readerPage(
   const authors = page.authors.length ? await db.authors(page.authors) : [];
   return {
     page: withCurrentCoverHeading(page),
-    authors: authors.map(({ id, name }) => ({ id, name })),
+    authors: authors.map(({ id, name, role, photo, photoAssetId }) => ({
+      id,
+      name,
+      role,
+      photo,
+      photoAssetId,
+    })),
   };
 }
 
@@ -368,6 +374,26 @@ function applyMagazineCommand(
         throw new RequestError(409, "That page already exists.");
       state.pages.push({ ...command.page, status: "Draft", version: 1 });
       break;
+    case "importPages": {
+      requirePermission(permissions.edit(user.role));
+      if (!state.pages.length && command.file.pages[0].template === "Cover") {
+        requirePermission(permissions.editPage(user.role, true));
+      }
+      const authorIds = new Set(state.authors.map((author) => author.id));
+      for (const page of command.file.pages) {
+        if (page.authors.some((id) => !authorIds.has(id))) {
+          throw new RequestError(400, `“${page.title}” references a contributor unavailable in this workspace.`);
+        }
+        state.pages.push({
+          ...page,
+          id: randomUUID(),
+          blocks: page.blocks.map((block) => ({ ...block, id: randomUUID() })),
+          status: "Draft",
+          version: 1,
+        });
+      }
+      break;
+    }
     case "savePage": {
       requirePermission(permissions.edit(user.role));
       const page = pageAtVersion(state, command.page.id, command.version);
@@ -449,7 +475,7 @@ function applyMagazineCommand(
   }
 }
 
-async function validateMedia(db: Repository, pages: PageContent[]) {
+async function validateMedia(db: Repository, pages: PageContent[], importing = false) {
   const references = new Map<string, string>();
   for (const { blocks } of pages) {
     for (const block of blocks) {
@@ -475,7 +501,9 @@ async function validateMedia(db: Repository, pages: PageContent[]) {
     if (asset?.kind !== type || asset.purpose || asset.deletion)
       throw new RequestError(
         400,
-        "That media asset is unavailable for this block.",
+        importing
+          ? "An imported page references an image or video unavailable in this Media Library."
+          : "That media asset is unavailable for this block.",
       );
   }
 }
@@ -681,6 +709,7 @@ export async function runCommand(
       await validateMedia(
         db,
         pages.map(({ page }) => page),
+        command.action === "importPages",
       );
       const authors = state.authors.slice(authorCount);
       for (const author of authors) {
@@ -863,9 +892,14 @@ export function deliverableMedia(id: string, token?: string) {
       const user = await findSession(token, db);
       if (user && (asset.ownerId === user.id || (await db.authorUsesPhoto(id))))
         return asset;
-      return;
+    } else if ((await db.mediaIsPublished(id)) || (await findSession(token, db))) {
+      return asset;
     }
-    if ((await db.mediaIsPublished(id)) || (await findSession(token, db)))
+    if (
+      asset.kind === "image" &&
+      !asset.deletion &&
+      (await db.authorPhotoIsPublished(id))
+    )
       return asset;
   });
 }

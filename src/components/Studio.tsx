@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ComponentProps,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -37,10 +45,12 @@ import {
   type Workspace,
 } from "@/lib/data";
 import type { Transition, WorkspaceCommand } from "@/lib/commands";
+import { pageContent } from "@/lib/page-transfer";
 import MagazinePage from "./MagazinePage";
 import FullScreenImage, { type ImagePreview } from "./FullScreenImage";
 import MediaUpload from "./MediaUpload";
 import PageList from "./PageList";
+import PageTransfer from "./PageTransfer";
 import StudioAccount from "./StudioAccount";
 import { useSuccessToast } from "./ToastProvider";
 import ResponsiveImage from "./ResponsiveImage";
@@ -69,16 +79,6 @@ type Send = (
   message: string,
 ) => Promise<Workspace | null>;
 
-function pageContent({
-  id,
-  title,
-  template,
-  authors,
-  blocks,
-}: PageContent): PageContent {
-  return { id, title, template, authors, blocks };
-}
-
 const blockLabels: Record<Block["type"], string> = {
   heading: "Heading",
   paragraph: "Text",
@@ -86,6 +86,130 @@ const blockLabels: Record<Block["type"], string> = {
   video: "Video",
   quote: "Quote",
 };
+
+function GrowingTextarea({
+  value,
+  rows = 2,
+  ...props
+}: ComponentProps<"textarea"> & { value: string }) {
+  return (
+    <span
+      className="growing-textarea"
+      data-value={value}
+      style={{ "--textarea-rows": rows } as CSSProperties}
+    >
+      <textarea {...props} className="field" rows={rows} value={value} />
+    </span>
+  );
+}
+
+function BlockTools({
+  disabled,
+  onAdd,
+}: {
+  disabled: boolean;
+  onAdd: (type: Block["type"]) => void;
+}) {
+  const inline = useRef<HTMLDivElement>(null);
+  const mobileMenu = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const [floating, setFloating] = useState(false);
+
+  useEffect(() => {
+    const toolbar = inline.current;
+    if (!toolbar) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setFloating(!entry.isIntersecting);
+    });
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
+
+  function moveToTop() {
+    mobileMenu.current?.hidePopover?.();
+    const workspace = inline.current?.closest<HTMLElement>(".workspace");
+    if (!workspace) return;
+    workspace.focus({ preventScroll: true });
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    workspace.scrollTo({
+      top: 0,
+      behavior: reducedMotion.matches ? "instant" : "smooth",
+    });
+  }
+
+  const buttons = (Object.keys(blockLabels) as Block["type"][]).map((type) => (
+    <button
+      type="button"
+      className="btn"
+      key={type}
+      disabled={disabled}
+      onClick={() => {
+        mobileMenu.current?.hidePopover?.();
+        onAdd(type);
+      }}
+    >
+      <Plus size={13} aria-hidden="true" />
+      {blockLabels[type]}
+    </button>
+  ));
+  const topButton = (
+    <button
+      type="button"
+      className="btn"
+      aria-label="Back to top"
+      title="Back to top"
+      onClick={moveToTop}
+    >
+      <ArrowUp size={17} aria-hidden="true" /> Top
+    </button>
+  );
+
+  return (
+    <>
+      <div
+        className="button-row inline-block-tools"
+        ref={inline}
+        inert={floating}
+        role="group"
+        aria-label="Add content"
+      >
+        {buttons}
+      </div>
+      {floating && (
+        <div
+          className="button-row floating-block-tools"
+          role="group"
+          aria-label="Add content"
+        >
+          {topButton}
+          {buttons}
+        </div>
+      )}
+      <div className="mobile-block-tools">
+        <button
+          type="button"
+          className="btn primary block-tools-toggle"
+          aria-label="Open editor controls"
+          title="Editor controls"
+          popoverTarget={menuId}
+        >
+          <Plus size={22} aria-hidden="true" />
+        </button>
+        <div
+          className="block-tools-popover"
+          id={menuId}
+          ref={mobileMenu}
+          popover="auto"
+          role="group"
+          aria-label="Editor controls"
+        >
+          {topButton}
+          {buttons}
+        </div>
+      </div>
+    </>
+  );
+}
 
 function NewUserForm({ send, busy }: { send: Send; busy: boolean }) {
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -334,9 +458,19 @@ function PageEditor({
       <div className="workspace-heading">
         <div>
           <h1>{page.title}</h1>
-          <span className="pill">{page.status}</span>
+          <span className="pill" data-page-status={page.status}>
+            {page.status}
+          </span>
         </div>
         <div className="button-row">
+          {permissions.edit(role) && (
+            <PageTransfer
+              pages={[editable ? draft : page]}
+              single
+              busy={busy}
+              send={send}
+            />
+          )}
           {editable && (
             <button
               className="btn"
@@ -423,8 +557,7 @@ function PageEditor({
         <div className="panel stack">
           <label>
             Requested changes
-            <textarea
-              className="field"
+            <GrowingTextarea
               value={note}
               maxLength={2000}
               onChange={(event) => setNote(event.target.value)}
@@ -446,19 +579,10 @@ function PageEditor({
           <div className="panel stack">
             <div className="panel-heading">
               <h2 className="serif">Page content</h2>
-              <div className="button-row">
-                {(Object.keys(blockLabels) as Block["type"][]).map((type) => (
-                  <button
-                    className="btn"
-                    key={type}
-                    disabled={busy || draft.blocks.length >= 100}
-                    onClick={() => addBlock(type)}
-                  >
-                    <Plus size={13} />
-                    {blockLabels[type]}
-                  </button>
-                ))}
-              </div>
+              <BlockTools
+                disabled={busy || draft.blocks.length >= 200}
+                onAdd={addBlock}
+              />
             </div>
             <fieldset disabled={busy} className="stack">
               {draft.blocks.map((block, index) => (
@@ -499,9 +623,8 @@ function PageEditor({
                       </button>
                     </div>
                   </div>
-                  <textarea
+                  <GrowingTextarea
                     id={`block-${block.id}`}
-                    className="field"
                     autoFocus={active === block.id}
                     rows={block.type === "paragraph" ? 5 : 2}
                     placeholder={
@@ -1111,14 +1234,17 @@ export default function Studio({
                   {headings[currentView]}
                 </h1>
                 {currentView === "pages" && canEdit && (
-                  <button
-                    className="btn primary"
-                    disabled={busy}
-                    onClick={createPage}
-                  >
-                    <Plus size={17} />
-                    New page
-                  </button>
+                  <div className="button-row">
+                    <PageTransfer pages={pages} busy={busy} send={send} />
+                    <button
+                      className="btn primary"
+                      disabled={busy}
+                      onClick={createPage}
+                    >
+                      <Plus size={17} aria-hidden="true" />
+                      New page
+                    </button>
+                  </div>
                 )}
                 {currentView === "authors" && canEdit && (
                   <button

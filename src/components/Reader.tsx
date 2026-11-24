@@ -158,7 +158,7 @@ export default function Reader({
       if (
         event.target instanceof Element &&
         event.target.closest(
-          "input, textarea, select, video, [contenteditable]",
+          "input, textarea, select, video, [contenteditable], .full-screen-image",
         )
       )
         return;

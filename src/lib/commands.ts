@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { minimumPasswordLength, roles, templates } from './data';
+import { maxPageExportPages, pageExportFormat, pageExportVersion } from './page-transfer';
 
 const id = z.string().min(1).max(100);
 export const newContributorId = z.uuid();
@@ -18,7 +19,12 @@ const page = z.object({
   title,
   template: z.enum(templates),
   authors: z.array(id).max(100),
-  blocks: z.array(block).max(100),
+  blocks: z.array(block).max(500),
+});
+export const pageTransferFile = z.object({
+  format: z.literal(pageExportFormat),
+  version: z.literal(pageExportVersion),
+  pages: z.array(page).min(1).max(maxPageExportPages),
 });
 const email = z.email().trim().max(254).toLowerCase();
 const author = z.object({
@@ -64,6 +70,7 @@ export const uploadCommand = z.discriminatedUnion('action', [
 
 export const workspaceCommand = z.discriminatedUnion('action', [
   z.object({ action: z.literal('createPage'), page }),
+  z.object({ action: z.literal('importPages'), file: pageTransferFile }),
   z.object({ action: z.literal('savePage'), page, version }),
   z.object({ action: z.literal('deletePage'), id, version }),
   z.object({ action: z.literal('movePage'), id, targetId: id, placement: z.enum(['before', 'after']) }),

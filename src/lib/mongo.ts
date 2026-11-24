@@ -62,7 +62,9 @@ async function connect(uri: string) {
         { "page.published.blocks.assetId": 1 },
         { sparse: true },
       ),
+      data.pages.createIndex({ "page.published.authors": 1 }, { sparse: true }),
       data.authors.createIndex({ "value.name": 1 }),
+      data.authors.createIndex({ "value.photoAssetId": 1 }, { sparse: true }),
       data.revisions.createIndex(
         { "value.page.id": 1, "value.version": 1 },
         { unique: true },
@@ -244,6 +246,19 @@ function repository(
     },
     authors,
     authorUsesPhoto,
+    async authorPhotoIsPublished(id) {
+      const projection = { ...options, projection: { _id: 1 } };
+      const matches = await data.authors
+        .find({ "value.photoAssetId": id }, projection)
+        .toArray();
+      if (!matches.length) return false;
+      return Boolean(
+        await data.pages.findOne(
+          { "page.published.authors": { $in: matches.map(({ _id }) => _id) } },
+          projection,
+        ),
+      );
+    },
     async authorByAccount(id) {
       return (await data.authors.findOne({ "value.accountId": id }, options))
         ?.value;

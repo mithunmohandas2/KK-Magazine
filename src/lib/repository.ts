@@ -47,6 +47,7 @@ export interface Repository {
   authors(ids?: string[]): Promise<Author[]>;
   authorByAccount(id: string): Promise<Author | undefined>;
   authorUsesPhoto(id: string): Promise<boolean>;
+  authorPhotoIsPublished(id: string): Promise<boolean>;
   updateAuthor(author: Author): Promise<void>;
   saveMagazine(state: MagazineState, changes: MagazineChanges): Promise<void>;
   setPagePositions(pages: { id: string; position: number }[]): Promise<void>;

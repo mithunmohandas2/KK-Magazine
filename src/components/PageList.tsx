@@ -58,6 +58,7 @@ function PageRow({
     <div
       ref={setNodeRef}
       className={showHandle ? "record page-record" : "record"}
+      data-page-status={page.status}
       data-dragging={isDragging || undefined}
       style={{
         transform: transform
