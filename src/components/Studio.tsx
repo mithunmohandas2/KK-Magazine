@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   ArrowDown,
   ArrowUp,
@@ -38,13 +39,21 @@ import {
 import type { Transition, WorkspaceCommand } from "@/lib/commands";
 import MagazinePage from "./MagazinePage";
 import FullScreenImage, { type ImagePreview } from "./FullScreenImage";
-import MediaLibrary from "./MediaLibrary";
 import MediaUpload from "./MediaUpload";
 import PageList from "./PageList";
-import Contributors from "./Contributors";
-import ContactInbox from "./ContactInbox";
 import StudioAccount from "./StudioAccount";
 import { useSuccessToast } from "./ToastProvider";
+import ResponsiveImage from "./ResponsiveImage";
+
+const MediaLibrary = dynamic(() => import("./MediaLibrary"), {
+  loading: () => <p role="status">Loading media library…</p>,
+});
+const Contributors = dynamic(() => import("./Contributors"), {
+  loading: () => <p role="status">Loading contributors…</p>,
+});
+const ContactInbox = dynamic(() => import("./ContactInbox"), {
+  loading: () => <p role="status">Loading reader messages…</p>,
+});
 
 type View =
   | "pages"
@@ -172,12 +181,14 @@ function PageEditor({
 }) {
   const [draft, setDraft] = useState(() => ({
     ...pageContent(page),
-    template: isCover ? "Cover" as const : page.template,
+    template: isCover ? ("Cover" as const) : page.template,
   }));
   const [note, setNote] = useState("");
   const [active, setActive] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
-  const [fullScreenImage, setFullScreenImage] = useState<ImagePreview | null>(null);
+  const [fullScreenImage, setFullScreenImage] = useState<ImagePreview | null>(
+    null,
+  );
   const canEdit = permissions.editPage(role, isCover);
   const editable = page.status === "Draft" && canEdit;
   const dirty = JSON.stringify(draft) !== JSON.stringify(pageContent(page));
@@ -200,18 +211,29 @@ function PageEditor({
 
   function updateTitle(title: string) {
     setDraft((current) => {
-      const heading = isCover && current.blocks.find((block) => block.type === "heading" && block.text.trim());
+      const heading =
+        isCover &&
+        current.blocks.find(
+          (block) => block.type === "heading" && block.text.trim(),
+        );
       return {
         ...current,
         title,
-        blocks: heading ? current.blocks.map((block) => block === heading ? { ...block, text: title } : block) : current.blocks,
+        blocks: heading
+          ? current.blocks.map((block) =>
+              block === heading ? { ...block, text: title } : block,
+            )
+          : current.blocks,
       };
     });
   }
 
   function moveBlock(index: number, offset: number) {
     const blocks = [...draft.blocks];
-    [blocks[index], blocks[index + offset]] = [blocks[index + offset], blocks[index]];
+    [blocks[index], blocks[index + offset]] = [
+      blocks[index + offset],
+      blocks[index],
+    ];
     setDraft({ ...draft, blocks });
   }
 
@@ -221,53 +243,90 @@ function PageEditor({
     setActive(block.id);
   }
 
-  function mediaFields(block: Pick<Block, "src" | "assetId">, kind: "image" | "video",
-    update: (change: Partial<Block>) => void, urlLabel: string,
+  function mediaFields(
+    block: Pick<Block, "src" | "assetId">,
+    kind: "image" | "video",
+    update: (change: Partial<Block>) => void,
+    urlLabel: string,
   ) {
-    const assets = media.filter((asset) => asset.kind === kind && !asset.deletion);
-    return <>
-      {(assets.length > 0 || block.assetId) && (
-        <label>
-          Media library
-          <select className="field" value={block.assetId || ""} onChange={(event) => {
-            const assetId = event.target.value || undefined;
-            update({ assetId, src: assetId ? undefined : block.src });
-          }}>
-            <option value="">Use a URL</option>
-            {block.assetId && !assets.some((asset) => asset.id === block.assetId) && (
-              <option value={block.assetId}>Current {kind}</option>
-            )}
-            {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-          </select>
-        </label>
-      )}
-      {!block.assetId && (
-        <label>
-          {urlLabel}
-          <input className="field" type="url" maxLength={2048} value={block.src || ""}
-            onChange={(event) => update({ src: event.target.value })} />
-        </label>
-      )}
-      {kind === "image" && uploadsEnabled && (
-        <MediaUpload imageOnly busy={busy} onBusyChange={onBusyChange} onUploaded={(asset) => {
-          onUploaded(asset);
-          update({ assetId: asset.id, src: undefined });
-        }} />
-      )}
-    </>;
+    const assets = media.filter(
+      (asset) => asset.kind === kind && !asset.deletion,
+    );
+    return (
+      <>
+        {(assets.length > 0 || block.assetId) && (
+          <label>
+            Media library
+            <select
+              className="field"
+              value={block.assetId || ""}
+              onChange={(event) => {
+                const assetId = event.target.value || undefined;
+                update({ assetId, src: assetId ? undefined : block.src });
+              }}
+            >
+              <option value="">Use a URL</option>
+              {block.assetId &&
+                !assets.some((asset) => asset.id === block.assetId) && (
+                  <option value={block.assetId}>Current {kind}</option>
+                )}
+              {assets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!block.assetId && (
+          <label>
+            {urlLabel}
+            <input
+              className="field"
+              type="url"
+              maxLength={2048}
+              value={block.src || ""}
+              onChange={(event) => update({ src: event.target.value })}
+            />
+          </label>
+        )}
+        {kind === "image" && uploadsEnabled && (
+          <MediaUpload
+            imageOnly
+            busy={busy}
+            onBusyChange={onBusyChange}
+            onUploaded={(asset) => {
+              onUploaded(asset);
+              update({ assetId: asset.id, src: undefined });
+            }}
+          />
+        )}
+      </>
+    );
   }
 
   function imagePreview(src: string | undefined, description: string) {
     if (!src || !/^(https?:\/\/|\/api\/media\/)/i.test(src)) return null;
-    return <div className="stack page-image-preview">
-      <img src={src} alt={description} />
-      <div>
-        <button type="button" className="btn" aria-haspopup="dialog" disabled={busy}
-          onClick={() => setFullScreenImage({ src, description })}>
-          <Maximize2 size={16} aria-hidden="true" /> Full-screen preview
-        </button>
+    return (
+      <div className="stack page-image-preview">
+        <ResponsiveImage
+          src={src}
+          alt={description}
+          sizes="(max-width: 750px) 90vw, 720px"
+        />
+        <div>
+          <button
+            type="button"
+            className="btn"
+            aria-haspopup="dialog"
+            disabled={busy}
+            onClick={() => setFullScreenImage({ src, description })}
+          >
+            <Maximize2 size={16} aria-hidden="true" /> Full-screen preview
+          </button>
+        </div>
       </div>
-    </div>;
+    );
   }
 
   return (
@@ -310,15 +369,18 @@ function PageEditor({
               Submit for review
             </button>
           )}
-          {canEdit && (isCover ? page.status !== "Draft" : page.status === "Published") && (
-            <button
-              className="btn primary"
-              disabled={busy}
-              onClick={() => transition("revise", "Draft revision created.")}
-            >
-              {isCover ? "Edit cover" : "Create revision"}
-            </button>
-          )}
+          {canEdit &&
+            (isCover
+              ? page.status !== "Draft"
+              : page.status === "Published") && (
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={() => transition("revise", "Draft revision created.")}
+              >
+                {isCover ? "Edit cover" : "Create revision"}
+              </button>
+            )}
           {page.status === "In review" && permissions.review(role) && (
             <button
               className="btn primary"
@@ -454,9 +516,17 @@ function PageEditor({
                     }
                   />
                   {(block.type === "image" || block.type === "video") &&
-                    mediaFields(block, block.type, (change) => updateBlock(block.id, change),
-                      `${blockLabels[block.type]} URL`)}
-                  {block.type === "image" && imagePreview(blockSource(block), block.text.trim() || "Page image")}
+                    mediaFields(
+                      block,
+                      block.type,
+                      (change) => updateBlock(block.id, change),
+                      `${blockLabels[block.type]} URL`,
+                    )}
+                  {block.type === "image" &&
+                    imagePreview(
+                      blockSource(block),
+                      block.text.trim() || "Page image",
+                    )}
                 </div>
               ))}
               {!draft.blocks.length && (
@@ -468,8 +538,12 @@ function PageEditor({
             <h2 className="serif">Page details</h2>
             <label>
               Title
-              <input className="field" maxLength={200} value={draft.title}
-                onChange={(event) => updateTitle(event.target.value)} />
+              <input
+                className="field"
+                maxLength={200}
+                value={draft.title}
+                onChange={(event) => updateTitle(event.target.value)}
+              />
             </label>
             <label>
               Template
@@ -552,7 +626,12 @@ function PageEditor({
           />
         </div>
       )}
-      {fullScreenImage && <FullScreenImage image={fullScreenImage} onClose={() => setFullScreenImage(null)} />}
+      {fullScreenImage && (
+        <FullScreenImage
+          image={fullScreenImage}
+          onClose={() => setFullScreenImage(null)}
+        />
+      )}
     </div>
   );
 }
@@ -567,7 +646,11 @@ const headings: Record<View, string> = {
   inbox: "Reader messages",
 };
 
-function PagePreview({ page, authors, onClose }: {
+function PagePreview({
+  page,
+  authors,
+  onClose,
+}: {
   page: EditorialPage;
   authors: Author[];
   onClose: () => void;
@@ -577,17 +660,36 @@ function PagePreview({ page, authors, onClose }: {
     if (!dialog.current?.open) dialog.current?.showModal();
   }, []);
   return (
-    <dialog ref={dialog} className="panel studio-profile-dialog page-preview-dialog"
-      aria-labelledby="page-preview-title" onClose={onClose}>
+    <dialog
+      ref={dialog}
+      className="panel studio-profile-dialog page-preview-dialog"
+      aria-labelledby="page-preview-title"
+      onClose={onClose}
+    >
       <div className="page-preview-header">
-        <h2 className="serif" id="page-preview-title">{page.title}</h2>
-        <button type="button" className="studio-icon-button" aria-label="Close page preview"
-          onClick={() => dialog.current?.close()}>
+        <h2 className="serif" id="page-preview-title">
+          {page.title}
+        </h2>
+        <button
+          type="button"
+          className="studio-icon-button"
+          aria-label="Close page preview"
+          onClick={() => dialog.current?.close()}
+        >
           <X size={20} aria-hidden="true" />
         </button>
       </div>
-      <div className="page-preview-content" role="region" aria-label="Page content" tabIndex={0}>
-        <MagazinePage page={page} authors={authors} cover={initialMagazine.cover} />
+      <div
+        className="page-preview-content"
+        role="region"
+        aria-label="Page content"
+        tabIndex={0}
+      >
+        <MagazinePage
+          page={page}
+          authors={authors}
+          cover={initialMagazine.cover}
+        />
       </div>
     </dialog>
   );
@@ -608,11 +710,11 @@ export default function Studio({
   const [legacy, setLegacy] = useState<ImportCommand | null>(null);
   const [sectionsOpen, setSectionsOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [contributorForm, setContributorForm] = useState<Author | "new" | null>(null);
+  const [contributorForm, setContributorForm] = useState<Author | "new" | null>(
+    null,
+  );
   const [deleteCandidate, setDeleteCandidate] = useState<
-    | { kind: "user"; user: User }
-    | { kind: "page"; page: EditorialPage }
-    | null
+    { kind: "user"; user: User } | { kind: "page"; page: EditorialPage } | null
   >(null);
   const mobileDrawer = useRef<HTMLDialogElement>(null);
   const deleteDialog = useRef<HTMLDialogElement>(null);
@@ -770,7 +872,9 @@ export default function Studio({
             version: deleteCandidate.page.version,
           }
         : { action: "deleteUser", id: deleteCandidate.user.id },
-      deleteCandidate.kind === "page" ? "Page deleted." : "User account deleted.",
+      deleteCandidate.kind === "page"
+        ? "Page deleted."
+        : "User account deleted.",
     );
     if (result) {
       closeDeleteDialog();
@@ -897,13 +1001,24 @@ export default function Studio({
             setData((current) => ({
               ...current,
               user: updated,
-              authors: detailsChanged && updated.contributorId && updated.profile
-                ? current.authors.map((author) => author.id === updated.contributorId && updated.profile
-                  ? { ...author, name: updated.name === current.user.name ? author.name : updated.name,
-                      role: updated.profile.credit, bio: updated.profile.bio,
-                      photo: updated.profile.photo, photoAssetId: updated.profile.photoAssetId }
-                  : author)
-                : current.authors,
+              authors:
+                detailsChanged && updated.contributorId && updated.profile
+                  ? current.authors.map((author) =>
+                      author.id === updated.contributorId && updated.profile
+                        ? {
+                            ...author,
+                            name:
+                              updated.name === current.user.name
+                                ? author.name
+                                : updated.name,
+                            role: updated.profile.credit,
+                            bio: updated.profile.bio,
+                            photo: updated.profile.photo,
+                            photoAssetId: updated.profile.photoAssetId,
+                          }
+                        : author,
+                    )
+                  : current.authors,
               users: current.users.map((account) =>
                 account.id === updated.id ? updated : account,
               ),
@@ -949,7 +1064,12 @@ export default function Studio({
         >
           {sectionLinks}
         </nav>
-        <main className="workspace stack" ref={contentPanel} tabIndex={0} aria-label="Dashboard content">
+        <main
+          className="workspace stack"
+          ref={contentPanel}
+          tabIndex={0}
+          aria-label="Dashboard content"
+        >
           {selected && (
             <div>
               <button
@@ -1001,11 +1121,16 @@ export default function Studio({
                   </button>
                 )}
                 {currentView === "authors" && canEdit && (
-                  <button type="button" className="btn primary" disabled={busy} aria-haspopup="dialog"
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={busy}
+                    aria-haspopup="dialog"
                     onClick={() => {
                       setError("");
                       setContributorForm("new");
-                    }}>
+                    }}
+                  >
                     <Plus size={17} aria-hidden="true" />
                     Add contributor
                   </button>
@@ -1052,7 +1177,9 @@ export default function Studio({
                     setSelected(id);
                     setError("");
                   }}
-                  onPreview={currentView === "pages" ? setPreviewPage : undefined}
+                  onPreview={
+                    currentView === "pages" ? setPreviewPage : undefined
+                  }
                   onMove={(command) => send(command, "Page order saved.")}
                 />
               )}
@@ -1073,12 +1200,27 @@ export default function Studio({
                     setError("");
                     setContributorForm(null);
                   }}
-                  onSave={async (id, author, accountId, newPassword) => Boolean(await (
-                    contributorForm && contributorForm !== "new"
-                      ? send({ action: "editAuthor", id, author, accountId, newPassword },
-                        newPassword ? "Contributor updated and password reset." : "Contributor updated.")
-                      : send({ action: "addAuthor", id, author }, "Contributor added.")
-                  ))}
+                  onSave={async (id, author, accountId, newPassword) =>
+                    Boolean(
+                      await (contributorForm && contributorForm !== "new"
+                        ? send(
+                            {
+                              action: "editAuthor",
+                              id,
+                              author,
+                              accountId,
+                              newPassword,
+                            },
+                            newPassword
+                              ? "Contributor updated and password reset."
+                              : "Contributor updated.",
+                          )
+                        : send(
+                            { action: "addAuthor", id, author },
+                            "Contributor added.",
+                          )),
+                    )
+                  }
                 />
               )}
               {currentView === "inbox" && isAdmin && <ContactInbox />}
@@ -1092,10 +1234,12 @@ export default function Studio({
                   busy={busy}
                   onBusyChange={setBusy}
                   onUploaded={addMedia}
-                  onDeleted={(id) => setData((current) => ({
-                    ...current,
-                    media: current.media.filter((asset) => asset.id !== id),
-                  }))}
+                  onDeleted={(id) =>
+                    setData((current) => ({
+                      ...current,
+                      media: current.media.filter((asset) => asset.id !== id),
+                    }))
+                  }
                 />
               )}
               {currentView === "users" && isAdmin && (
@@ -1148,7 +1292,10 @@ export default function Studio({
                               aria-label={`Delete ${account.name}`}
                               onClick={() => {
                                 setError("");
-                                setDeleteCandidate({ kind: "user", user: account });
+                                setDeleteCandidate({
+                                  kind: "user",
+                                  user: account,
+                                });
                               }}
                             >
                               Delete
@@ -1165,7 +1312,11 @@ export default function Studio({
         </main>
       </div>
       {previewPage && (
-        <PagePreview page={previewPage} authors={authors} onClose={() => setPreviewPage(null)} />
+        <PagePreview
+          page={previewPage}
+          authors={authors}
+          onClose={() => setPreviewPage(null)}
+        />
       )}
       <dialog
         className="studio-delete-dialog panel"
@@ -1187,15 +1338,16 @@ export default function Studio({
             <p id="studio-delete-description">
               {deleteCandidate.kind === "page" ? (
                 <>
-                  Permanently delete <strong>{deleteCandidate.page.title}</strong>{" "}
-                  and its publication history? Any live version will be removed
-                  from the reader.
+                  Permanently delete{" "}
+                  <strong>{deleteCandidate.page.title}</strong> and its
+                  publication history? Any live version will be removed from the
+                  reader.
                 </>
               ) : (
                 <>
                   <strong>{deleteCandidate.user.name}</strong> (
-                  {deleteCandidate.user.email}) will lose dashboard access and be
-                  signed out of active sessions.
+                  {deleteCandidate.user.email}) will lose dashboard access and
+                  be signed out of active sessions.
                 </>
               )}
             </p>

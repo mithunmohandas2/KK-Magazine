@@ -36,7 +36,7 @@ export function mediaUrl(id: string) {
   return `/api/media/${encodeURIComponent(id)}`;
 }
 
-export function blockSource({ assetId, src }: Block) {
+export function blockSource({ assetId, src }: Pick<Block, "assetId" | "src">) {
   return assetId ? mediaUrl(assetId) : src;
 }
 export const templates = [
@@ -61,22 +61,41 @@ export type Magazine = {
   cover: string;
   pages: PageContent[];
 };
+export type ReaderPageSummary = Pick<PageContent, "id" | "title"> & {
+  thumbnail?: string;
+};
+export type ReaderMagazine = Pick<Magazine, "title" | "cover"> & {
+  pages: ReaderPageSummary[];
+};
+export type ReaderPage = {
+  page: PageContent;
+  authors: Pick<Author, "id" | "name">[];
+};
 export const magazineName = "മൊഴി";
 export const defaultCoverHeading = "കരിയാത്തൻ കാവിൽ മാസിക";
 export function magazineCoverId(pages: readonly PageContent[]) {
   const first = pages[0];
-  if (
-    first &&
-    (first.template === "Cover" || first.id === "p1")
-  )
+  if (first && (first.template === "Cover" || first.id === "p1"))
     return first.id;
 }
 export type EditorialPage = Page & { version: number; reviewNote?: string };
 export const roles = ["Admin", "Editor", "Reviewer", "Publisher"] as const;
 export const minimumPasswordLength = 8;
 export type Role = (typeof roles)[number];
-export type UserProfile = { credit: string; bio: string; photo: string; photoAssetId?: string };
-export type User = { id: string; name: string; email: string; role: Role; profile?: UserProfile; contributorId?: string };
+export type UserProfile = {
+  credit: string;
+  bio: string;
+  photo: string;
+  photoAssetId?: string;
+};
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  profile?: UserProfile;
+  contributorId?: string;
+};
 export type ContactMessage = {
   id: string;
   name: string;

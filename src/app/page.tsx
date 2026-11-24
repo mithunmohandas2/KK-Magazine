@@ -9,11 +9,15 @@ export const viewport: Viewport = { viewportFit: "cover" };
 
 export default async function Home() {
   const token = (await cookies()).get(sessionCookie)?.value;
-  const [{ magazine, authors }, user] = await Promise.all([
+  const [{ magazine, initialPage }, user] = await Promise.all([
     publicMagazine(),
     sessionUser(token),
   ]);
   return (
-    <Reader magazine={magazine} authors={authors} signedIn={Boolean(user)} />
+    <Reader
+      magazine={magazine}
+      initialPage={initialPage}
+      signedIn={Boolean(user)}
+    />
   );
 }
