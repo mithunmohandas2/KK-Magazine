@@ -1,1 +1,17 @@
-{"name":"Folio Digital Magazine","short_name":"Folio","start_url":"/","display":"standalone","background_color":"#f8f7f4","theme_color":"#242421","icons":[]}
+{
+  "id": "/",
+  "name": "മൊഴി",
+  "short_name": "മൊഴി",
+  "description": "Read the Mozhi digital magazine.",
+  "lang": "ml",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f0eee7",
+  "theme_color": "#293a30",
+  "icons": [
+    { "src": "/icons/mozhi-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/mozhi-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/mozhi-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

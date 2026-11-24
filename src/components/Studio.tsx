@@ -1,49 +1,1234 @@
-'use client';
-import {useEffect,useMemo,useState} from 'react';
-import {BookOpen,LayoutDashboard,FileText,Users,Images,Settings,Sun,Moon,Plus,Search,ChevronLeft,ChevronRight,ArrowLeft,Eye,Save,Trash2,GripVertical,PanelRight,Menu,Check,Copy,Download,Maximize2,Columns2,AlignJustify,Upload,Image as ImageIcon,Quote,Type,Heading1,ChevronDown,ExternalLink} from 'lucide-react';
-import {initialAuthors,initialIssues,sampleArticles,type Author,type Issue,type Page,type Block} from '@/lib/data';
-type View='home'|'issues'|'reader'|'articles'|'authors'|'dashboard'|'editor'|'media'|'reviews'|'settings';
-const uid=()=>Math.random().toString(36).slice(2,10);
-function ThemeToggle({dark,setDark}:{dark:boolean;setDark:(v:boolean)=>void}){return <button aria-label="Toggle theme" className="btn" onClick={()=>setDark(!dark)}>{dark?<Sun size={16}/>:<Moon size={16}/>}</button>}
-function renderBlock(block:Block){switch(block.type){case 'heading':return <h1 className="serif font-normal tracking-tight my-4">{block.text}</h1>;case 'image':return <figure className="my-5"><img src={block.src||'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1000'} alt={block.text} className="w-full max-h-[350px] object-cover"/><figcaption className="text-xs text-stone-500 mt-2">{block.text}</figcaption></figure>;case 'quote':return <blockquote className="serif italic text-2xl border-l-2 border-orange-400 pl-5 my-6">{block.text}</blockquote>;default:return <p className="my-4 text-[15px]">{block.text}</p>}}
-export default function Studio(){
- const [view,setView]=useState<View>('home'),[dark,setDark]=useState(false),[issues,setIssues]=useState<Issue[]>(initialIssues),[authors,setAuthors]=useState<Author[]>(initialAuthors),[selectedIssue,setSelectedIssue]=useState('i1'),[selectedPage,setSelectedPage]=useState('p2'),[readerIndex,setReaderIndex]=useState(0),[scrollMode,setScrollMode]=useState(false),[showAuthorForm,setShowAuthorForm]=useState(false),[authorForm,setAuthorForm]=useState({name:'',role:'',bio:'',photo:''}),[search,setSearch]=useState(''),[selectedBlock,setSelectedBlock]=useState<string|null>(null),[saving,setSaving]=useState(false),[saved,setSaved]=useState(true),[sidebar,setSidebar]=useState(true),[notice,setNotice]=useState('');
- useEffect(()=>{const t=localStorage.getItem('folio-theme');setDark(t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches);try{const d=localStorage.getItem('folio-demo-data');if(d){const v=JSON.parse(d);if(Array.isArray(v.issues)&&Array.isArray(v.authors)){setIssues(v.issues);setAuthors(v.authors)}}}catch{}},[]);
- useEffect(()=>{document.documentElement.classList.toggle('dark',dark);localStorage.setItem('folio-theme',dark?'dark':'light')},[dark]);
- const issue=issues.find(i=>i.id===selectedIssue)||issues[0],page=issue?.pages.find(p=>p.id===selectedPage)||issue?.pages[0];
- useEffect(()=>{if(!saved){setSaving(true);const t=setTimeout(()=>{localStorage.setItem('folio-demo-data',JSON.stringify({issues,authors}));setSaving(false);setSaved(true)},750);return()=>clearTimeout(t)}},[issues,authors,saved]);
- const changeIssues=(next:Issue[])=>{setIssues(next);setSaved(false)};
- const changeAuthors=(next:Author[])=>{setAuthors(next);setSaved(false)};
- const updatePage=(fn:(p:Page)=>Page)=>changeIssues(issues.map(i=>i.id===selectedIssue?{...i,pages:i.pages.map(p=>p.id===selectedPage?fn(p):p)}:i));
- const updateBlock=(id:string,patch:Partial<Block>)=>updatePage(p=>({...p,status:p.status==='Published'?'Draft':p.status,blocks:p.blocks.map(b=>b.id===id?{...b,...patch}:b)}));
- const addBlock=(type:Block['type'])=>{const b:Block={id:uid(),type,text:type==='heading'?'New heading':type==='quote'?'A memorable quotation':type==='image'?'Image caption':'Start writing your story...',src:type==='image'?'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1000':undefined};updatePage(p=>({...p,status:'Draft',blocks:[...p.blocks,b]}));setSelectedBlock(b.id)};
- const addPage=()=>{const p:Page={id:uid(),title:'Untitled page',template:'Editorial',authors:[],blocks:[{id:uid(),type:'heading',text:'New page'},{id:uid(),type:'paragraph',text:'Write your story here.'}],status:'Draft'};changeIssues(issues.map(i=>i.id===selectedIssue?{...i,pages:[...i.pages,p]}:i));setSelectedPage(p.id);setView('editor')};
- const addIssue=()=>{const id=uid(),pid=uid();changeIssues([...issues,{id,title:'Untitled Issue',edition:'NEW ISSUE',description:'A new collection of stories.',status:'Draft',cover:'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1000',pages:[{id:pid,title:'Cover',template:'Cover',authors:[],status:'Draft',blocks:[{id:uid(),type:'heading',text:'NEW ISSUE'}]}]}]);setSelectedIssue(id);setSelectedPage(pid);setView('dashboard')};
- const show=(v:View)=>{setView(v);setSearch('');window.scrollTo(0,0)};
- const nav=(v:View)=>show(v);
- const toast=(s:string)=>{setNotice(s);setTimeout(()=>setNotice(''),3200)};
- const editorNav=[{id:'dashboard',label:'Overview',icon:LayoutDashboard},{id:'issues',label:'Issues & pages',icon:BookOpen},{id:'articles',label:'Articles',icon:FileText},{id:'authors',label:'Authors',icon:Users},{id:'media',label:'Media library',icon:Images},{id:'reviews',label:'Review queue',icon:Check},{id:'settings',label:'Settings',icon:Settings}] as const;
- const dashboard=['dashboard','editor','authors','media','reviews','settings'].includes(view);
- const readerPages=issue?.pages||[];
- return <div className="min-h-screen">
- {notice&&<div className="fixed right-5 top-5 z-50 bg-stone-900 text-white px-5 py-3 rounded-xl shadow-xl text-sm">{notice}</div>}
- {!dashboard?<header className="surface bordered sticky top-0 z-30 border-x-0 border-t-0"><div className="max-w-[1380px] mx-auto px-5 md:px-10 h-[76px] flex items-center justify-between gap-4"><button onClick={()=>nav('home')} className="serif text-3xl tracking-[-2px]">folio<span className="accent">.</span></button><nav className="hidden md:flex items-center gap-7 text-sm muted"><button onClick={()=>nav('home')} className={view==='home'?'font-bold':''}>Home</button><button onClick={()=>nav('issues')}>Issues</button><button onClick={()=>nav('articles')}>Stories</button><button onClick={()=>nav('authors')}>Contributors</button></nav><div className="flex items-center gap-2"><ThemeToggle dark={dark} setDark={setDark}/><button onClick={()=>nav('dashboard')} className="btn primary"><LayoutDashboard size={15}/> <span className="hide-mobile">Studio</span></button></div></div></header>:
- <div className="desktop-sidebar fixed left-0 top-0 bottom-0 w-[244px] surface border-r z-30 flex flex-col" style={{borderColor:'var(--line)'}}><button onClick={()=>nav('home')} className="serif text-3xl tracking-[-2px] text-left px-7 py-7">folio<span className="accent">.</span><span className="block text-[10px] uppercase tracking-[3px] font-sans muted mt-1">Editorial Studio</span></button><div className="px-3 flex-1 space-y-1">{editorNav.map(n=><button key={n.id} onClick={()=>nav(n.id==='issues'?'dashboard':n.id as View)} className={'navlink w-full '+(view===n.id?'active':'')}><n.icon size={17}/>{n.label}</button>)}</div><div className="p-4 border-t" style={{borderColor:'var(--line)'}}><button onClick={()=>nav('home')} className="navlink w-full"><ExternalLink size={16}/>View public site</button><div className="flex justify-between items-center mt-2 px-2"><span className="text-xs muted">Appearance</span><ThemeToggle dark={dark} setDark={setDark}/></div></div></div>}
- {dashboard&&<header className="surface border-b sticky top-0 z-20 md:ml-[244px] px-5 md:px-9 h-[72px] flex items-center justify-between" style={{borderColor:'var(--line)'}}><div className="flex items-center gap-3"><button className="md:hidden" onClick={()=>setSidebar(!sidebar)}><Menu size={21}/></button><span className="text-sm font-semibold">{view==='editor'?'Page editor':view==='dashboard'?'Overview':editorNav.find(n=>n.id===view)?.label}</span><span className="pill hide-mobile">Demo workspace</span></div><div className="flex items-center gap-2"><span className="text-xs muted hide-mobile">{saving?'Saving…':saved?'All changes saved':'Unsaved changes'}</span><button className="btn" onClick={()=>{localStorage.setItem('folio-demo-data',JSON.stringify({issues,authors}));setSaved(true);toast('Saved in this browser')}}><Save size={15}/>Save</button><button className="btn hide-mobile" onClick={()=>nav('home')}><Eye size={15}/>Preview site</button></div></header>}
- {dashboard&&sidebar&&<div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={()=>setSidebar(false)}><div className="surface w-64 h-full p-4" onClick={e=>e.stopPropagation()}><button className="serif text-3xl mb-6" onClick={()=>{setSidebar(false);nav('home')}}>folio.</button>{editorNav.map(n=><button key={n.id} className="navlink w-full" onClick={()=>{setSidebar(false);nav(n.id==='issues'?'dashboard':n.id as View)}}><n.icon size={17}/>{n.label}</button>)}<button className="navlink" onClick={()=>{setSidebar(false);nav('home')}}>Public site</button></div></div>}
- <main className={dashboard?'md:ml-[244px]':''}>
- {view==='home'&&<><section className="max-w-[1380px] mx-auto px-5 md:px-10 py-12 md:py-20 grid md:grid-cols-[.85fr_1.15fr] gap-12 items-center"><div><span className="uppercase text-[11px] tracking-[4px] accent font-bold">The November Edition · Issue 01</span><h1 className="serif text-6xl md:text-[100px] leading-[.95] tracking-[-4px] mt-7 mb-7">Stories that<br/><em>stay with</em><br/>you.</h1><p className="muted text-base leading-8 max-w-md">A beautifully curated digital magazine celebrating design, discovery, culture and the art of living well.</p><div className="flex flex-wrap gap-3 mt-8"><button className="btn primary" onClick={()=>{setReaderIndex(0);nav('reader')}}><BookOpen size={17}/>Read the issue</button><button className="btn" onClick={()=>nav('issues')}>Explore all issues <ChevronRight size={16}/></button></div><div className="mt-12 flex gap-10 border-t pt-6" style={{borderColor:'var(--line)'}}><div><strong className="serif text-3xl">01</strong><div className="muted text-xs mt-1">Edition</div></div><div><strong className="serif text-3xl">03</strong><div className="muted text-xs mt-1">Contributors</div></div><div><strong className="serif text-3xl">∞</strong><div className="muted text-xs mt-1">Ideas</div></div></div></div><div className="relative"><div className="hero-gradient absolute -inset-5 rounded-sm opacity-15 rotate-2"/><div className="relative h-[510px] md:h-[620px] overflow-hidden shadow-2xl"><img src={issue?.cover} alt="Featured magazine cover" className="w-full h-full object-cover"/><div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/65 text-white p-8 md:p-12 flex flex-col justify-between"><div className="flex justify-between text-[12px] tracking-[4px]"><span>FOLIO / JOURNAL</span><span>VOL. 01</span></div><div><p className="uppercase text-[12px] tracking-[5px] mb-4">An exploration of everyday beauty</p><h2 className="serif text-6xl md:text-8xl leading-none">The Art<br/><em>of Living</em></h2><p className="mt-6 text-sm tracking-[2px]">CULTURE · DESIGN · DISCOVERY</p></div></div></div></div></section><section className="max-w-[1380px] mx-auto px-5 md:px-10 py-16 border-t" style={{borderColor:'var(--line)'}}><div className="flex justify-between items-end mb-9"><div><span className="accent text-xs uppercase tracking-[3px]">Thoughtfully curated</span><h2 className="serif text-4xl md:text-5xl mt-3">Featured stories</h2></div><button className="text-sm underline" onClick={()=>nav('articles')}>All stories</button></div><div className="grid md:grid-cols-3 gap-7">{sampleArticles.map(a=><article key={a.id} className="cursor-pointer" onClick={()=>nav('articles')}><img className="h-60 w-full object-cover" src={a.image} alt={a.title}/><div className="accent text-xs uppercase tracking-[2px] mt-5">{a.category}</div><h3 className="serif text-3xl mt-2">{a.title}</h3><p className="muted text-sm leading-6 mt-2">{a.description}</p><div className="muted text-xs mt-4">By {a.author}</div></article>)}</div></section></>}
- {view==='issues'&&<section className="max-w-[1180px] mx-auto px-5 md:px-10 py-16"><span className="accent uppercase text-xs tracking-[3px]">The collection</span><h1 className="serif text-6xl mt-4 mb-5">Magazine archive</h1><p className="muted mb-12">Explore our editions, each crafted for curious minds.</p><div className="grid md:grid-cols-3 gap-8">{issues.filter(i=>i.status==='Published').map(i=><button className="text-left" key={i.id} onClick={()=>{setSelectedIssue(i.id);setReaderIndex(0);nav('reader')}}><div className="h-[390px] relative overflow-hidden"><img src={i.cover} alt={i.title} className="w-full h-full object-cover"/><div className="absolute inset-0 bg-black/30 text-white flex items-end p-7"><span className="serif text-4xl">{i.title}</span></div></div><div className="accent text-xs tracking-[2px] mt-5">{i.edition}</div><h2 className="serif text-2xl mt-2">{i.title}</h2><p className="muted text-sm mt-2">{i.description}</p></button>)}</div></section>}
- {view==='articles'&&<section className="max-w-[1180px] mx-auto px-5 md:px-10 py-16"><span className="accent uppercase text-xs tracking-[3px]">Our journal</span><h1 className="serif text-6xl mt-4 mb-5">Stories & perspectives</h1><p className="muted mb-12">Writing to inspire a more thoughtful everyday.</p><div className="grid md:grid-cols-3 gap-8">{sampleArticles.map(a=><article key={a.id}><img src={a.image} alt={a.title} className="w-full h-64 object-cover"/><div className="accent text-xs tracking-[2px] mt-5 uppercase">{a.category}</div><h2 className="serif text-3xl mt-2">{a.title}</h2><p className="muted text-sm leading-7 mt-3">{a.description}</p><p className="text-xs muted mt-4">By {a.author}</p></article>)}</div></section>}
- {view==='reader'&&<section className="max-w-[1350px] mx-auto px-4 md:px-10 py-8"><div className="flex flex-wrap items-center justify-between gap-3 mb-8"><div><button onClick={()=>nav('issues')} className="flex items-center gap-2 text-sm muted mb-2"><ArrowLeft size={15}/>All issues</button><h1 className="serif text-3xl">{issue?.title}</h1><p className="muted text-xs tracking-[2px] mt-1">{issue?.edition}</p></div><div className="flex flex-wrap gap-2"><button className={'btn '+(!scrollMode?'primary':'')} onClick={()=>setScrollMode(false)}><BookOpen size={15}/>Flipbook</button><button className={'btn '+(scrollMode?'primary':'')} onClick={()=>setScrollMode(true)}><AlignJustify size={15}/>Scroll</button></div></div>{scrollMode?<div className="max-w-[750px] mx-auto space-y-10">{readerPages.map((p,idx)=><div key={p.id} className="book-page p-8 md:p-12"><div className="text-xs uppercase tracking-[2px] text-stone-500 mb-6">Folio · {idx+1}</div>{p.blocks.map(b=><div key={b.id}>{renderBlock(b)}</div>)}{p.authors.length>0&&<div className="border-t pt-5 mt-8 text-xs text-stone-500">By {p.authors.map(id=>authors.find(a=>a.id===id)?.name).filter(Boolean).join(' & ')}</div>}</div>)}</div>:<><div className="flex justify-center items-stretch max-w-[1080px] mx-auto perspective-[1500px] gap-[3px]">{(typeof window!=='undefined'&&window.innerWidth<800?[readerPages[readerIndex]]:[readerPages[readerIndex],readerPages[readerIndex+1]]).filter(Boolean).map((p,idx)=><div key={p.id} className="book-page w-full md:w-1/2 p-6 md:p-10 transition-transform duration-500" style={{transform:idx===1?'rotateY(-1deg)':'rotateY(1deg)'}}><div className="text-[10px] uppercase tracking-[3px] text-stone-500 mb-6">FOLIO · {p.template}</div>{p.blocks.map(b=><div key={b.id}>{renderBlock(b)}</div>)}{p.authors.length>0&&<div className="text-xs text-stone-500 border-t pt-4 mt-8">By {p.authors.map(id=>authors.find(a=>a.id===id)?.name).filter(Boolean).join(' & ')}</div>}<div className="absolute bottom-3 right-5 text-xs text-stone-400">{readerPages.indexOf(p)+1}</div></div>)}</div><div className="flex items-center justify-center gap-5 mt-8"><button className="btn" disabled={readerIndex===0} onClick={()=>setReaderIndex(Math.max(0,readerIndex-2))}><ChevronLeft size={17}/>Previous</button><span className="text-xs muted">Page {readerIndex+1} of {readerPages.length}</span><button className="btn" disabled={readerIndex>=readerPages.length-1} onClick={()=>setReaderIndex(Math.min(readerPages.length-1,readerIndex+2))}>Next <ChevronRight size={17}/></button></div></>}</section>}
- {view==='authors'&&!dashboard&&<section className="max-w-[1180px] mx-auto px-5 md:px-10 py-16"><span className="accent uppercase text-xs tracking-[3px]">The voices behind Folio</span><h1 className="serif text-6xl mt-4 mb-12">Contributors</h1><div className="grid md:grid-cols-3 gap-10">{authors.map(a=><div key={a.id}><img src={a.photo} alt={a.name} className="w-full aspect-[4/3] object-cover"/><h2 className="serif text-3xl mt-5">{a.name}</h2><p className="accent text-xs mt-2 uppercase tracking-widest">{a.role}</p><p className="muted text-sm leading-7 mt-3">{a.bio}</p></div>)}</div></section>}
- {view==='dashboard'&&<section className="p-5 md:p-9 max-w-[1400px]"><div className="flex justify-between items-center mb-8"><div><p className="accent uppercase tracking-[3px] text-xs">Editorial workspace</p><h1 className="serif text-4xl mt-2">Good morning, Editor.</h1><p className="muted text-sm mt-2">Here’s what’s happening with your magazine.</p></div><button className="btn primary" onClick={addIssue}><Plus size={16}/>New issue</button></div><div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-9">{[['Total issues',issues.length],['Magazine pages',issues.reduce((n,i)=>n+i.pages.length,0)],['Contributors',authors.length],['Awaiting review',issues.flatMap(i=>i.pages).filter(p=>p.status==='In review').length]].map(([label,n])=><div key={label} className="surface bordered rounded-xl p-5"><div className="muted text-xs">{label}</div><div className="serif text-4xl mt-3">{n}</div></div>)}</div><div className="surface bordered rounded-xl p-6"><div className="flex justify-between items-center mb-6"><h2 className="serif text-2xl">Your issues</h2><button className="btn" onClick={addIssue}><Plus size={15}/>Create</button></div><div className="space-y-3">{issues.map(i=><div key={i.id} className="flex gap-4 items-center p-3 rounded-xl" style={{background:'var(--soft)'}}><img src={i.cover} alt="" className="w-14 h-16 object-cover rounded"/><div className="flex-1"><div className="font-semibold text-sm">{i.title}</div><div className="muted text-xs mt-1">{i.edition} · {i.pages.length} pages</div></div><span className="pill hide-mobile">{i.status}</span><button className="btn" onClick={()=>{setSelectedIssue(i.id);setSelectedPage(i.pages[0]?.id);nav('editor')}}>Edit <ChevronRight size={14}/></button></div>)}</div></div></section>}
- {view==='issues'&&dashboard&&null}
- {view==='editor'&&page&&<div className="flex flex-col lg:flex-row min-h-[calc(100vh-72px)]"><aside className="lg:w-[235px] surface border-r p-4 shrink-0" style={{borderColor:'var(--line)'}}><div className="text-[11px] uppercase tracking-[2px] muted mb-4">Issue pages</div><select className="field text-sm mb-4" value={selectedIssue} onChange={e=>{setSelectedIssue(e.target.value);setSelectedPage(issues.find(i=>i.id===e.target.value)?.pages[0]?.id||'')}}>{issues.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select><div className="space-y-2">{issue.pages.map((p,idx)=><button key={p.id} onClick={()=>{setSelectedPage(p.id);setSelectedBlock(null)}} className="w-full text-left p-3 rounded-lg bordered" style={{background:p.id===selectedPage?'var(--soft)':'var(--surface)',borderColor:p.id===selectedPage?'var(--accent)':'var(--line)'}}><div className="text-xs muted">PAGE {idx+1}</div><div className="text-sm font-semibold mt-1 truncate">{p.title}</div><div className="text-[11px] muted mt-1">{p.status}</div></button>)}</div><button className="btn w-full mt-4" onClick={addPage}><Plus size={15}/>Add page</button><div className="border-t mt-7 pt-5" style={{borderColor:'var(--line)'}}><div className="text-[11px] uppercase tracking-[2px] muted mb-3">Add content</div><div className="grid grid-cols-2 gap-2">{([{t:'heading',icon:Heading1,label:'Heading'},{t:'paragraph',icon:Type,label:'Text'},{t:'image',icon:ImageIcon,label:'Image'},{t:'quote',icon:Quote,label:'Quote'}] as const).map(b=><button key={b.t} className="btn flex-col py-3" onClick={()=>addBlock(b.t)}><b.icon size={18}/>{b.label}</button>)}</div></div></aside><div className="flex-1 p-5 md:p-8 min-w-0"><div className="flex flex-wrap justify-between items-center gap-3 mb-6"><div><h1 className="serif text-3xl">{page.title}</h1><div className="text-xs muted mt-1">{page.template} template · {page.status}</div></div><div className="flex gap-2"><button className="btn" onClick={()=>{setReaderIndex(Math.max(0,issue.pages.findIndex(p=>p.id===page.id)));nav('reader')}}><Eye size={15}/>Preview</button><button className="btn primary" onClick={()=>{updatePage(p=>({...p,status:p.status==='Draft'?'In review':p.status==='In review'?'Approved':p.status==='Approved'?'Published':'Draft'}));toast('Workflow status updated (demo only)')}}>{page.status==='Draft'?'Submit review':page.status==='In review'?'Approve':page.status==='Approved'?'Publish':'Create revision'}</button></div></div><div className="book-page max-w-[700px] mx-auto p-7 md:p-12 min-h-[720px]">{page.blocks.map((b,idx)=><div key={b.id} className={'editor-block '+(selectedBlock===b.id?'selected':'')} onClick={()=>setSelectedBlock(b.id)}><div className="absolute -left-7 top-2 hidden md:flex flex-col gap-1 text-stone-400"><button title="Move up" onClick={e=>{e.stopPropagation();updatePage(p=>{const a=[...p.blocks];if(idx>0)[a[idx-1],a[idx]]=[a[idx],a[idx-1]];return {...p,blocks:a,status:'Draft'}})}}>↑</button><button title="Move down" onClick={e=>{e.stopPropagation();updatePage(p=>{const a=[...p.blocks];if(idx<a.length-1)[a[idx+1],a[idx]]=[a[idx],a[idx+1]];return {...p,blocks:a,status:'Draft'}})}}>↓</button></div>{renderBlock(b)}</div>)}<button className="w-full text-center text-xs text-stone-400 border border-dashed border-stone-300 py-5 mt-6" onClick={()=>addBlock('paragraph')}>+ Add a text block</button></div></div><aside className="lg:w-[270px] surface border-l p-5 shrink-0" style={{borderColor:'var(--line)'}}><h3 className="font-semibold text-sm mb-5">Page properties</h3><label className="text-xs muted block mb-2">Page title</label><input className="field mb-5" value={page.title} onChange={e=>updatePage(p=>({...p,title:e.target.value,status:'Draft'}))}/><label className="text-xs muted block mb-2">Template</label><select className="field mb-5" value={page.template} onChange={e=>updatePage(p=>({...p,template:e.target.value,status:'Draft'}))}>{['Cover','Feature','Editorial','Gallery','Minimal'].map(t=><option key={t}>{t}</option>)}</select><label className="text-xs muted block mb-2">Primary author</label><select className="field mb-3" value={page.authors[0]||''} onChange={e=>updatePage(p=>({...p,authors:e.target.value?[e.target.value,...p.authors.filter(x=>x!==e.target.value)]:[],status:'Draft'}))}><option value="">No author</option>{authors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select><label className="text-xs muted block mb-2">Co-authors</label><div className="space-y-2 mb-6">{authors.filter(a=>a.id!==page.authors[0]).map(a=><label key={a.id} className="flex gap-2 text-xs items-center"><input type="checkbox" checked={page.authors.includes(a.id)} onChange={e=>updatePage(p=>({...p,authors:e.target.checked?[...p.authors,a.id]:p.authors.filter(x=>x!==a.id),status:'Draft'}))}/>{a.name}</label>)}</div><div className="border-t pt-5" style={{borderColor:'var(--line)'}}><h3 className="text-sm font-semibold mb-4">Selected block</h3>{page.blocks.filter(b=>b.id===selectedBlock).map(b=><div key={b.id}><div className="text-xs muted mb-2 capitalize">{b.type}</div><textarea className="field text-sm min-h-28" value={b.text} onChange={e=>updateBlock(b.id,{text:e.target.value})}/>{b.type==='image'&&<><label className="text-xs muted block mt-3 mb-2">Image URL</label><input className="field text-xs" value={b.src||''} onChange={e=>updateBlock(b.id,{src:e.target.value})}/></>}<button className="btn mt-4 text-red-600" onClick={()=>{updatePage(p=>({...p,blocks:p.blocks.filter(x=>x.id!==b.id),status:'Draft'}));setSelectedBlock(null)}}><Trash2 size={14}/>Delete block</button></div>)}{!selectedBlock&&<p className="muted text-xs leading-6">Select a block on the canvas to edit its content and settings.</p>}</div></aside></div>}
- {view==='authors'&&dashboard&&<section className="p-5 md:p-9"><div className="flex flex-wrap justify-between gap-4 items-center mb-8"><div><h1 className="serif text-4xl">Authors & contributors</h1><p className="muted text-sm mt-2">Manage the people credited in your magazine.</p></div><button className="btn primary" onClick={()=>setShowAuthorForm(true)}><Plus size={16}/>Add author</button></div><div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{authors.map(a=><div key={a.id} className="surface bordered rounded-xl p-5 flex gap-4"><img src={a.photo} alt={a.name} className="w-20 h-20 object-cover rounded-xl"/><div><h2 className="font-semibold">{a.name}</h2><p className="accent text-xs mt-1">{a.role}</p><p className="muted text-xs leading-5 mt-2">{a.bio}</p></div></div>)}</div>{showAuthorForm&&<div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"><div className="surface rounded-2xl p-6 w-full max-w-lg"><h2 className="serif text-3xl mb-5">Add contributor</h2><div className="space-y-3">{(['name','role','bio','photo'] as const).map(k=><div key={k}><label className="text-xs muted capitalize block mb-1">{k==='photo'?'Photo URL':k}</label><input className="field" value={authorForm[k]} onChange={e=>setAuthorForm({...authorForm,[k]:e.target.value})}/></div>)}</div><div className="flex justify-end gap-2 mt-6"><button className="btn" onClick={()=>setShowAuthorForm(false)}>Cancel</button><button className="btn primary" disabled={!authorForm.name.trim()} onClick={()=>{changeAuthors([...authors,{id:uid(),...authorForm,photo:authorForm.photo||'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200'}]);setAuthorForm({name:'',role:'',bio:'',photo:''});setShowAuthorForm(false);toast('Author added')}}>Save author</button></div></div></div>}</section>}
- {view==='media'&&<section className="p-5 md:p-9"><h1 className="serif text-4xl">Media library</h1><p className="muted text-sm mt-2 mb-8">Browse visual assets used in this demo. Cloudinary credentials are required for production uploads.</p><div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[...new Set([...sampleArticles.map(a=>a.image),...issues.flatMap(i=>[i.cover,...i.pages.flatMap(p=>p.blocks.filter(b=>b.type==='image').map(b=>b.src||''))])])].filter(Boolean).map((url,i)=><div key={i} className="surface bordered rounded-xl overflow-hidden"><img src={url} alt={'Media asset '+(i+1)} className="w-full h-40 object-cover"/><div className="p-3 flex justify-between items-center"><span className="text-xs muted">Asset {i+1}</span><button className="btn" onClick={()=>{navigator.clipboard.writeText(url);toast('URL copied')}}><Copy size={13}/></button></div></div>)}</div></section>}
- {view==='reviews'&&<section className="p-5 md:p-9"><h1 className="serif text-4xl">Review queue</h1><p className="muted text-sm mt-2 mb-8">Pages submitted for editorial review.</p><div className="space-y-3">{issues.flatMap(i=>i.pages.filter(p=>p.status==='In review').map(p=>({i,p}))).map(({i,p})=><div key={p.id} className="surface bordered rounded-xl p-5 flex justify-between items-center"><div><div className="font-semibold">{p.title}</div><div className="muted text-xs mt-1">{i.title}</div></div><button className="btn primary" onClick={()=>{setSelectedIssue(i.id);setSelectedPage(p.id);nav('editor')}}>Review</button></div>)}{!issues.some(i=>i.pages.some(p=>p.status==='In review'))&&<div className="surface bordered rounded-xl p-12 text-center muted">Nothing is awaiting review.</div>}</div></section>}
- {view==='settings'&&<section className="p-5 md:p-9 max-w-3xl"><h1 className="serif text-4xl mb-2">Studio settings</h1><p className="muted text-sm mb-8">Personalize the local demo workspace.</p><div className="surface bordered rounded-xl p-6"><h2 className="font-semibold mb-2">Appearance</h2><p className="muted text-sm mb-5">Your theme preference is saved in local storage and restored on your next visit.</p><div className="flex gap-3"><button className={'btn '+(!dark?'primary':'')} onClick={()=>setDark(false)}><Sun size={16}/>Light</button><button className={'btn '+(dark?'primary':'')} onClick={()=>setDark(true)}><Moon size={16}/>Dark</button></div></div><div className="surface bordered rounded-xl p-6 mt-4"><h2 className="font-semibold mb-2">Demo data</h2><p className="muted text-sm mb-4">Your edits are saved in this browser only. Reset to restore sample content.</p><button className="btn" onClick={()=>{if(confirm('Reset all local demo changes?')){localStorage.removeItem('folio-demo-data');setIssues(initialIssues);setAuthors(initialAuthors);toast('Demo data reset')}}}>Reset sample content</button></div></section>}
- </main>
- {!dashboard&&<footer className="border-t mt-12" style={{borderColor:'var(--line)'}}><div className="max-w-[1380px] mx-auto px-5 md:px-10 py-10 flex flex-wrap justify-between gap-5"><div><div className="serif text-3xl">folio<span className="accent">.</span></div><p className="muted text-xs mt-2">Stories for the curious mind.</p></div><div className="flex gap-6 muted text-xs items-center"><button onClick={()=>nav('issues')}>Issues</button><button onClick={()=>nav('articles')}>Stories</button><button onClick={()=>nav('authors')}>Contributors</button></div><p className="muted text-xs">© 2026 Folio Magazine</p></div></footer>}
- </div>}
+"use client";
+
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
+import {
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  Check,
+  FileText,
+  Images,
+  Mail,
+  Maximize2,
+  Menu,
+  Plus,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  blockSource,
+  initialMagazine,
+  magazineCoverId,
+  magazineName,
+  minimumPasswordLength,
+  permissions,
+  roles,
+  templates,
+  type Author,
+  type Block,
+  type EditorialPage,
+  type MediaAsset,
+  type PageContent,
+  type Role,
+  type User,
+  type Workspace,
+} from "@/lib/data";
+import type { Transition, WorkspaceCommand } from "@/lib/commands";
+import MagazinePage from "./MagazinePage";
+import FullScreenImage, { type ImagePreview } from "./FullScreenImage";
+import MediaLibrary from "./MediaLibrary";
+import MediaUpload from "./MediaUpload";
+import PageList from "./PageList";
+import Contributors from "./Contributors";
+import ContactInbox from "./ContactInbox";
+import StudioAccount from "./StudioAccount";
+import { useSuccessToast } from "./ToastProvider";
+
+type View =
+  | "pages"
+  | "reviews"
+  | "publishing"
+  | "authors"
+  | "media"
+  | "users"
+  | "inbox";
+type ImportCommand = Extract<WorkspaceCommand, { action: "importDrafts" }>;
+type Send = (
+  command: WorkspaceCommand,
+  message: string,
+) => Promise<Workspace | null>;
+
+function pageContent({
+  id,
+  title,
+  template,
+  authors,
+  blocks,
+}: PageContent): PageContent {
+  return { id, title, template, authors, blocks };
+}
+
+const blockLabels: Record<Block["type"], string> = {
+  heading: "Heading",
+  paragraph: "Text",
+  image: "Image",
+  video: "Video",
+  quote: "Quote",
+};
+
+function NewUserForm({ send, busy }: { send: Send; busy: boolean }) {
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fields = new FormData(form);
+    const result = await send(
+      {
+        action: "createUser",
+        user: {
+          name: String(fields.get("name")),
+          email: String(fields.get("email")),
+          password: String(fields.get("password")),
+          role: fields.get("role") as Role,
+        },
+      },
+      "Account created.",
+    );
+    if (result) form.reset();
+  }
+
+  return (
+    <form className="panel form-grid" onSubmit={create}>
+      <h2 className="form-wide serif">Create account</h2>
+      <label>
+        Name
+        <input className="field" name="name" required maxLength={200} />
+      </label>
+      <label>
+        Email
+        <input
+          className="field"
+          name="email"
+          type="email"
+          required
+          maxLength={254}
+          autoComplete="off"
+        />
+      </label>
+      <label>
+        Initial password
+        <input
+          className="field"
+          name="password"
+          type="password"
+          required
+          minLength={minimumPasswordLength}
+          maxLength={128}
+          autoComplete="new-password"
+        />
+      </label>
+      <label>
+        Role
+        <select className="field" name="role" defaultValue="Editor">
+          {roles.map((role) => (
+            <option key={role}>{role}</option>
+          ))}
+        </select>
+      </label>
+      <div className="form-wide">
+        <button className="btn primary" disabled={busy}>
+          Create user
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function PageEditor({
+  page,
+  isCover,
+  authors,
+  media,
+  role,
+  busy,
+  send,
+  uploadsEnabled,
+  onBusyChange,
+  onUploaded,
+  onDelete,
+}: {
+  page: EditorialPage;
+  isCover: boolean;
+  authors: Author[];
+  media: MediaAsset[];
+  role: Role;
+  busy: boolean;
+  send: Send;
+  uploadsEnabled: boolean;
+  onBusyChange: (busy: boolean) => void;
+  onUploaded: (asset: MediaAsset) => void;
+  onDelete: () => void;
+}) {
+  const [draft, setDraft] = useState(() => ({
+    ...pageContent(page),
+    template: isCover ? "Cover" as const : page.template,
+  }));
+  const [note, setNote] = useState("");
+  const [active, setActive] = useState<string | null>(null);
+  const [preview, setPreview] = useState(false);
+  const [fullScreenImage, setFullScreenImage] = useState<ImagePreview | null>(null);
+  const canEdit = permissions.editPage(role, isCover);
+  const editable = page.status === "Draft" && canEdit;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(pageContent(page));
+
+  function transition(step: Transition, message: string) {
+    return send(
+      { action: "transition", id: page.id, version: page.version, step, note },
+      message,
+    );
+  }
+
+  function updateBlock(id: string, update: Partial<Block>) {
+    setDraft((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) =>
+        block.id === id ? { ...block, ...update } : block,
+      ),
+    }));
+  }
+
+  function updateTitle(title: string) {
+    setDraft((current) => {
+      const heading = isCover && current.blocks.find((block) => block.type === "heading" && block.text.trim());
+      return {
+        ...current,
+        title,
+        blocks: heading ? current.blocks.map((block) => block === heading ? { ...block, text: title } : block) : current.blocks,
+      };
+    });
+  }
+
+  function moveBlock(index: number, offset: number) {
+    const blocks = [...draft.blocks];
+    [blocks[index], blocks[index + offset]] = [blocks[index + offset], blocks[index]];
+    setDraft({ ...draft, blocks });
+  }
+
+  function addBlock(type: Block["type"]) {
+    const block = { id: crypto.randomUUID(), type, text: "" };
+    setDraft({ ...draft, blocks: [...draft.blocks, block] });
+    setActive(block.id);
+  }
+
+  function mediaFields(block: Pick<Block, "src" | "assetId">, kind: "image" | "video",
+    update: (change: Partial<Block>) => void, urlLabel: string,
+  ) {
+    const assets = media.filter((asset) => asset.kind === kind && !asset.deletion);
+    return <>
+      {(assets.length > 0 || block.assetId) && (
+        <label>
+          Media library
+          <select className="field" value={block.assetId || ""} onChange={(event) => {
+            const assetId = event.target.value || undefined;
+            update({ assetId, src: assetId ? undefined : block.src });
+          }}>
+            <option value="">Use a URL</option>
+            {block.assetId && !assets.some((asset) => asset.id === block.assetId) && (
+              <option value={block.assetId}>Current {kind}</option>
+            )}
+            {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+          </select>
+        </label>
+      )}
+      {!block.assetId && (
+        <label>
+          {urlLabel}
+          <input className="field" type="url" maxLength={2048} value={block.src || ""}
+            onChange={(event) => update({ src: event.target.value })} />
+        </label>
+      )}
+      {kind === "image" && uploadsEnabled && (
+        <MediaUpload imageOnly busy={busy} onBusyChange={onBusyChange} onUploaded={(asset) => {
+          onUploaded(asset);
+          update({ assetId: asset.id, src: undefined });
+        }} />
+      )}
+    </>;
+  }
+
+  function imagePreview(src: string | undefined, description: string) {
+    if (!src || !/^(https?:\/\/|\/api\/media\/)/i.test(src)) return null;
+    return <div className="stack page-image-preview">
+      <img src={src} alt={description} />
+      <div>
+        <button type="button" className="btn" aria-haspopup="dialog" disabled={busy}
+          onClick={() => setFullScreenImage({ src, description })}>
+          <Maximize2 size={16} aria-hidden="true" /> Full-screen preview
+        </button>
+      </div>
+    </div>;
+  }
+
+  return (
+    <div className="stack">
+      <div className="workspace-heading">
+        <div>
+          <h1>{page.title}</h1>
+          <span className="pill">{page.status}</span>
+        </div>
+        <div className="button-row">
+          {editable && (
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() => setPreview(!preview)}
+            >
+              {preview ? "Edit draft" : "Preview draft"}
+            </button>
+          )}
+          {editable && (
+            <button
+              className="btn"
+              disabled={busy || !dirty || !draft.title.trim()}
+              onClick={() =>
+                send(
+                  { action: "savePage", page: draft, version: page.version },
+                  "Draft saved.",
+                )
+              }
+            >
+              Save draft
+            </button>
+          )}
+          {editable && (
+            <button
+              className="btn primary"
+              disabled={busy || dirty}
+              onClick={() => transition("submit", "Submitted for review.")}
+            >
+              Submit for review
+            </button>
+          )}
+          {canEdit && (isCover ? page.status !== "Draft" : page.status === "Published") && (
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() => transition("revise", "Draft revision created.")}
+            >
+              {isCover ? "Edit cover" : "Create revision"}
+            </button>
+          )}
+          {page.status === "In review" && permissions.review(role) && (
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() => transition("approve", "Page approved.")}
+            >
+              Approve
+            </button>
+          )}
+          {page.status === "Approved" && permissions.publish(role) && (
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() => transition("publish", "Page published.")}
+            >
+              Publish
+            </button>
+          )}
+          {canEdit && !isCover && (
+            <button
+              type="button"
+              className="btn delete-action"
+              disabled={busy}
+              onClick={onDelete}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              Delete page
+            </button>
+          )}
+        </div>
+      </div>
+      {dirty && <p className="muted text-sm">Unsaved changes</p>}
+      {page.reviewNote && (
+        <div className="panel review-note">
+          <strong>Review feedback</strong>
+          <p>{page.reviewNote}</p>
+        </div>
+      )}
+      {page.status === "In review" && permissions.review(role) && (
+        <div className="panel stack">
+          <label>
+            Requested changes
+            <textarea
+              className="field"
+              value={note}
+              maxLength={2000}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          <div>
+            <button
+              className="btn"
+              disabled={busy || !note.trim()}
+              onClick={() => transition("return", "Returned for changes.")}
+            >
+              Request changes
+            </button>
+          </div>
+        </div>
+      )}
+      {editable && !preview ? (
+        <div className="edit-layout">
+          <div className="panel stack">
+            <div className="panel-heading">
+              <h2 className="serif">Page content</h2>
+              <div className="button-row">
+                {(Object.keys(blockLabels) as Block["type"][]).map((type) => (
+                  <button
+                    className="btn"
+                    key={type}
+                    disabled={busy || draft.blocks.length >= 100}
+                    onClick={() => addBlock(type)}
+                  >
+                    <Plus size={13} />
+                    {blockLabels[type]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <fieldset disabled={busy} className="stack">
+              {draft.blocks.map((block, index) => (
+                <div className="block-editor stack" key={block.id}>
+                  <div className="panel-heading">
+                    <label htmlFor={`block-${block.id}`}>
+                      {blockLabels[block.type]}
+                    </label>
+                    <div className="button-row">
+                      <button
+                        className="btn icon-button"
+                        aria-label="Move block up"
+                        disabled={index === 0}
+                        onClick={() => moveBlock(index, -1)}
+                      >
+                        <ArrowUp size={15} />
+                      </button>
+                      <button
+                        className="btn icon-button"
+                        aria-label="Move block down"
+                        disabled={index === draft.blocks.length - 1}
+                        onClick={() => moveBlock(index, 1)}
+                      >
+                        <ArrowDown size={15} />
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            blocks: draft.blocks.filter(
+                              (item) => item.id !== block.id,
+                            ),
+                          })
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    id={`block-${block.id}`}
+                    className="field"
+                    autoFocus={active === block.id}
+                    rows={block.type === "paragraph" ? 5 : 2}
+                    placeholder={
+                      block.type === "image" || block.type === "video"
+                        ? "Description"
+                        : undefined
+                    }
+                    value={block.text}
+                    maxLength={20000}
+                    onChange={(event) =>
+                      updateBlock(block.id, { text: event.target.value })
+                    }
+                  />
+                  {(block.type === "image" || block.type === "video") &&
+                    mediaFields(block, block.type, (change) => updateBlock(block.id, change),
+                      `${blockLabels[block.type]} URL`)}
+                  {block.type === "image" && imagePreview(blockSource(block), block.text.trim() || "Page image")}
+                </div>
+              ))}
+              {!draft.blocks.length && (
+                <p className="muted">Add a block to start writing.</p>
+              )}
+            </fieldset>
+          </div>
+          <fieldset className="panel stack" disabled={busy}>
+            <h2 className="serif">Page details</h2>
+            <label>
+              Title
+              <input className="field" maxLength={200} value={draft.title}
+                onChange={(event) => updateTitle(event.target.value)} />
+            </label>
+            <label>
+              Template
+              <select
+                className="field"
+                disabled={isCover}
+                value={draft.template}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    template: event.target.value as PageContent["template"],
+                  })
+                }
+              >
+                {templates.map((template) => (
+                  <option key={template}>{template}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Primary contributor
+              <select
+                className="field"
+                value={draft.authors[0] || ""}
+                onChange={(event) => {
+                  const id = event.target.value;
+                  setDraft({
+                    ...draft,
+                    authors: id
+                      ? [
+                          id,
+                          ...draft.authors
+                            .slice(1)
+                            .filter((author) => author !== id),
+                        ]
+                      : [],
+                  });
+                }}
+              >
+                <option value="">No contributor</option>
+                {authors.map((author) => (
+                  <option value={author.id} key={author.id}>
+                    {author.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {draft.authors[0] && (
+              <div className="stack">
+                <strong>Additional contributors</strong>
+                {authors
+                  .filter((author) => author.id !== draft.authors[0])
+                  .map((author) => (
+                    <label className="check-label" key={author.id}>
+                      <input
+                        type="checkbox"
+                        checked={draft.authors.includes(author.id)}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            authors: event.target.checked
+                              ? [...draft.authors, author.id]
+                              : draft.authors.filter((id) => id !== author.id),
+                          })
+                        }
+                      />
+                      {author.name}
+                    </label>
+                  ))}
+              </div>
+            )}
+          </fieldset>
+        </div>
+      ) : (
+        <div className="studio-preview">
+          <MagazinePage
+            page={draft}
+            authors={authors}
+            cover={initialMagazine.cover}
+          />
+        </div>
+      )}
+      {fullScreenImage && <FullScreenImage image={fullScreenImage} onClose={() => setFullScreenImage(null)} />}
+    </div>
+  );
+}
+
+const headings: Record<View, string> = {
+  pages: "Magazine pages",
+  reviews: "Review queue",
+  publishing: "Ready to publish",
+  authors: "Contributors",
+  media: "Media library",
+  users: "Users",
+  inbox: "Reader messages",
+};
+
+function PagePreview({ page, authors, onClose }: {
+  page: EditorialPage;
+  authors: Author[];
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal();
+  }, []);
+  return (
+    <dialog ref={dialog} className="panel studio-profile-dialog page-preview-dialog"
+      aria-labelledby="page-preview-title" onClose={onClose}>
+      <div className="page-preview-header">
+        <h2 className="serif" id="page-preview-title">{page.title}</h2>
+        <button type="button" className="studio-icon-button" aria-label="Close page preview"
+          onClick={() => dialog.current?.close()}>
+          <X size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="page-preview-content" role="region" aria-label="Page content" tabIndex={0}>
+        <MagazinePage page={page} authors={authors} cover={initialMagazine.cover} />
+      </div>
+    </dialog>
+  );
+}
+
+export default function Studio({
+  initialWorkspace,
+}: {
+  initialWorkspace: Workspace;
+}) {
+  const [data, setData] = useState(initialWorkspace);
+  const [view, setView] = useState<View>("pages");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [previewPage, setPreviewPage] = useState<EditorialPage | null>(null);
+  const [busy, setBusy] = useState(false);
+  const notify = useSuccessToast();
+  const [error, setError] = useState("");
+  const [legacy, setLegacy] = useState<ImportCommand | null>(null);
+  const [sectionsOpen, setSectionsOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [contributorForm, setContributorForm] = useState<Author | "new" | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<
+    | { kind: "user"; user: User }
+    | { kind: "page"; page: EditorialPage }
+    | null
+  >(null);
+  const mobileDrawer = useRef<HTMLDialogElement>(null);
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+  const viewHeading = useRef<HTMLHeadingElement>(null);
+  const contentPanel = useRef<HTMLElement>(null);
+  const { user, pages, authors, users, media, uploadsEnabled } = data;
+  const isAdmin = permissions.manageUsers(user.role);
+  const canEdit = permissions.edit(user.role);
+  const coverId = magazineCoverId(pages);
+  const page = pages.find((page) => page.id === selected);
+
+  function addMedia(asset: MediaAsset) {
+    setData((current) => ({
+      ...current,
+      media: [asset, ...current.media.filter((item) => item.id !== asset.id)],
+    }));
+  }
+
+  useEffect(() => {
+    if (contentPanel.current) contentPanel.current.scrollTop = 0;
+  }, [view, selected]);
+
+  useEffect(() => {
+    if (deleteCandidate && !deleteDialog.current?.open)
+      deleteDialog.current?.showModal();
+  }, [deleteCandidate]);
+
+  useEffect(() => {
+    const compact = window.matchMedia(
+      "(max-width: 750px), (pointer: coarse) and (max-width: 1000px)",
+    );
+    const onSizeChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) mobileDrawer.current?.close();
+    };
+    compact.addEventListener("change", onSizeChange);
+    return () => compact.removeEventListener("change", onSizeChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin || data.browserDraftsImported) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem("kk-demo-data") || "null");
+      if (!Array.isArray(saved?.issues) || !Array.isArray(saved?.authors))
+        return;
+      const pages = saved.issues.flatMap((item: { pages?: PageContent[] }) =>
+        Array.isArray(item.pages) ? item.pages.map(pageContent) : [],
+      );
+      setLegacy({ action: "importDrafts", pages, authors: saved.authors });
+    } catch {
+      // Ignore unreadable data from the browser-only prototype.
+    }
+  }, [isAdmin, data.browserDraftsImported]);
+
+  async function send(command: WorkspaceCommand, success: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-KK-Request": "1" },
+        body: JSON.stringify(command),
+      });
+      if (response.status === 401) {
+        window.location.assign("/login");
+        return null;
+      }
+      if (!response.ok) throw new Error((await response.json()).error);
+      const next: Workspace = await response.json();
+      setData(next);
+      if (!permissions.manageUsers(next.user.role) && view === "users")
+        setView("pages");
+      notify(success);
+      return next;
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "The change could not be saved.",
+      );
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function navigate(next: View) {
+    setView(next);
+    setSelected(null);
+    setError("");
+    try {
+      const response = await fetch("/api/workspace", { cache: "no-store" });
+      if (response.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!response.ok)
+        throw new Error("The dashboard could not be refreshed.");
+      setData(await response.json());
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "The dashboard could not be refreshed.",
+      );
+    }
+  }
+
+  async function logout() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/session", {
+        method: "DELETE",
+        headers: { "X-KK-Request": "1" },
+      });
+      if (!response.ok) throw new Error();
+      window.location.assign("/");
+    } catch {
+      setError("Could not log out. Try again.");
+      setBusy(false);
+    }
+  }
+
+  async function createPage() {
+    const id = crypto.randomUUID();
+    const result = await send(
+      {
+        action: "createPage",
+        page: {
+          id,
+          title: "Untitled page",
+          template: "Editorial",
+          authors: [],
+          blocks: [
+            { id: crypto.randomUUID(), type: "heading", text: "Untitled page" },
+          ],
+        },
+      },
+      "Draft created.",
+    );
+    if (result) setSelected(id);
+  }
+
+  function closeDeleteDialog() {
+    deleteDialog.current?.close();
+    setDeleteCandidate(null);
+  }
+
+  async function confirmDelete() {
+    if (busy || !deleteCandidate) return;
+    const result = await send(
+      deleteCandidate.kind === "page"
+        ? {
+            action: "deletePage",
+            id: deleteCandidate.page.id,
+            version: deleteCandidate.page.version,
+          }
+        : { action: "deleteUser", id: deleteCandidate.user.id },
+      deleteCandidate.kind === "page" ? "Page deleted." : "User account deleted.",
+    );
+    if (result) {
+      closeDeleteDialog();
+      if (deleteCandidate.kind === "page") setSelected(null);
+      requestAnimationFrame(() => viewHeading.current?.focus());
+    }
+  }
+
+  const navigation = [
+    { id: "pages", icon: FileText, enabled: true },
+    { id: "reviews", icon: Check, enabled: permissions.review(user.role) },
+    {
+      id: "publishing",
+      icon: BookOpen,
+      enabled: permissions.publish(user.role),
+    },
+    { id: "authors", icon: Users, enabled: true },
+    { id: "media", icon: Images, enabled: true },
+    { id: "users", icon: Users, enabled: isAdmin },
+    { id: "inbox", icon: Mail, enabled: isAdmin },
+  ] as const;
+
+  const currentView = navigation.some(
+    (item) => item.id === view && item.enabled,
+  )
+    ? view
+    : "pages";
+  const visiblePages = pages.filter((page) =>
+    currentView === "reviews"
+      ? page.status === "In review"
+      : currentView === "publishing"
+        ? page.status === "Approved"
+        : true,
+  );
+  const imageUrls = [
+    ...new Set([
+      initialMagazine.cover,
+      ...pages.flatMap((page) =>
+        page.blocks.flatMap((block) =>
+          block.type === "image" && block.src ? [block.src] : [],
+        ),
+      ),
+    ]),
+  ];
+  const sectionLinks = (
+    <>
+      {navigation
+        .filter((item) => item.enabled)
+        .map(({ id, icon: Icon }) => (
+          <button
+            type="button"
+            key={id}
+            className="navlink"
+            aria-current={currentView === id ? "page" : undefined}
+            disabled={busy}
+            onClick={() => {
+              mobileDrawer.current?.close();
+              void navigate(id);
+            }}
+          >
+            <Icon size={17} aria-hidden="true" />
+            {headings[id]}
+          </button>
+        ))}
+      <Link
+        href="/"
+        className="navlink"
+        prefetch={false}
+        onClick={() => mobileDrawer.current?.close()}
+      >
+        <BookOpen size={17} aria-hidden="true" />
+        Read magazine
+      </Link>
+    </>
+  );
+
+  return (
+    <div className="studio">
+      <header className="studio-header">
+        <div className="studio-header-start">
+          <button
+            type="button"
+            className="studio-icon-button studio-section-toggle"
+            aria-label={
+              sectionsOpen
+                ? "Hide dashboard sections"
+                : "Show dashboard sections"
+            }
+            aria-expanded={sectionsOpen}
+            aria-controls="studio-sections"
+            onClick={() => setSectionsOpen(!sectionsOpen)}
+          >
+            <Menu size={22} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="studio-icon-button studio-drawer-toggle"
+            aria-label="Open dashboard sections"
+            aria-haspopup="dialog"
+            aria-expanded={drawerOpen}
+            aria-controls="studio-drawer"
+            onClick={() => {
+              mobileDrawer.current?.showModal();
+              setDrawerOpen(true);
+            }}
+          >
+            <Menu size={22} aria-hidden="true" />
+          </button>
+          <Link
+            href="/"
+            className="wordmark"
+            aria-label="Read Mozhi magazine"
+            prefetch={false}
+          >
+            <span lang="ml">{magazineName}</span>
+          </Link>
+        </div>
+        <StudioAccount
+          user={user}
+          busy={busy}
+          uploadsEnabled={uploadsEnabled}
+          onLogout={logout}
+          onUpdated={(updated, detailsChanged) =>
+            setData((current) => ({
+              ...current,
+              user: updated,
+              authors: detailsChanged && updated.contributorId && updated.profile
+                ? current.authors.map((author) => author.id === updated.contributorId && updated.profile
+                  ? { ...author, name: updated.name === current.user.name ? author.name : updated.name,
+                      role: updated.profile.credit, bio: updated.profile.bio,
+                      photo: updated.profile.photo, photoAssetId: updated.profile.photoAssetId }
+                  : author)
+                : current.authors,
+              users: current.users.map((account) =>
+                account.id === updated.id ? updated : account,
+              ),
+            }))
+          }
+        />
+      </header>
+      <dialog
+        id="studio-drawer"
+        className="studio-drawer"
+        ref={mobileDrawer}
+        aria-labelledby="studio-drawer-title"
+        onClose={() => setDrawerOpen(false)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close();
+        }}
+      >
+        <div className="studio-drawer-inner">
+          <div className="studio-drawer-heading">
+            <h2 id="studio-drawer-title">Dashboard</h2>
+            <button
+              type="button"
+              className="studio-icon-button"
+              aria-label="Close dashboard sections"
+              onClick={() => mobileDrawer.current?.close()}
+            >
+              <X size={22} aria-hidden="true" />
+            </button>
+          </div>
+          <nav className="studio-nav" aria-label="Dashboard sections">
+            {sectionLinks}
+          </nav>
+        </div>
+      </dialog>
+      <div
+        className="studio-shell"
+        data-sections={sectionsOpen ? "open" : "closed"}
+      >
+        <nav
+          id="studio-sections"
+          className="studio-nav studio-nav-desktop"
+          aria-label="Dashboard sections"
+        >
+          {sectionLinks}
+        </nav>
+        <main className="workspace stack" ref={contentPanel} tabIndex={0} aria-label="Dashboard content">
+          {selected && (
+            <div>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => navigate(currentView)}
+              >
+                Back to {headings[currentView].toLowerCase()}
+              </button>
+            </div>
+          )}
+          {error && !deleteCandidate && !contributorForm && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          {page ? (
+            <PageEditor
+              key={`${page.id}-${page.version}`}
+              page={page}
+              isCover={page.id === coverId}
+              authors={authors}
+              media={media}
+              role={user.role}
+              busy={busy}
+              send={send}
+              uploadsEnabled={uploadsEnabled}
+              onBusyChange={setBusy}
+              onUploaded={addMedia}
+              onDelete={() => {
+                setError("");
+                setDeleteCandidate({ kind: "page", page });
+              }}
+            />
+          ) : (
+            <>
+              <div className="workspace-heading">
+                <h1 ref={viewHeading} tabIndex={-1}>
+                  {headings[currentView]}
+                </h1>
+                {currentView === "pages" && canEdit && (
+                  <button
+                    className="btn primary"
+                    disabled={busy}
+                    onClick={createPage}
+                  >
+                    <Plus size={17} />
+                    New page
+                  </button>
+                )}
+                {currentView === "authors" && canEdit && (
+                  <button type="button" className="btn primary" disabled={busy} aria-haspopup="dialog"
+                    onClick={() => {
+                      setError("");
+                      setContributorForm("new");
+                    }}>
+                    <Plus size={17} aria-hidden="true" />
+                    Add contributor
+                  </button>
+                )}
+              </div>
+              {currentView === "pages" &&
+                isAdmin &&
+                !data.browserDraftsImported &&
+                legacy && (
+                  <div className="panel panel-heading">
+                    <p className="text-sm">
+                      Bring pages saved by the earlier app in this browser into
+                      the magazine as drafts.
+                    </p>
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (await send(legacy, "Browser drafts imported."))
+                          setLegacy(null);
+                      }}
+                    >
+                      Import browser drafts
+                    </button>
+                  </div>
+                )}
+              {(["pages", "reviews", "publishing"] as View[]).includes(
+                currentView,
+              ) && (
+                <PageList
+                  coverId={coverId}
+                  pages={visiblePages}
+                  busy={busy}
+                  canReorder={currentView === "pages" && canEdit}
+                  action={currentView === "reviews" ? "Review" : "Open"}
+                  empty={
+                    currentView === "reviews"
+                      ? "No pages are awaiting review."
+                      : currentView === "publishing"
+                        ? "No pages are ready to publish."
+                        : "No magazine pages yet."
+                  }
+                  onOpen={(id) => {
+                    setSelected(id);
+                    setError("");
+                  }}
+                  onPreview={currentView === "pages" ? setPreviewPage : undefined}
+                  onMove={(command) => send(command, "Page order saved.")}
+                />
+              )}
+              {currentView === "authors" && (
+                <Contributors
+                  authors={authors}
+                  form={contributorForm}
+                  accounts={isAdmin ? users : undefined}
+                  busy={busy}
+                  error={error}
+                  uploadsEnabled={uploadsEnabled}
+                  onBusyChange={setBusy}
+                  onEdit={(author) => {
+                    setError("");
+                    setContributorForm(author);
+                  }}
+                  onClose={() => {
+                    setError("");
+                    setContributorForm(null);
+                  }}
+                  onSave={async (id, author, accountId, newPassword) => Boolean(await (
+                    contributorForm && contributorForm !== "new"
+                      ? send({ action: "editAuthor", id, author, accountId, newPassword },
+                        newPassword ? "Contributor updated and password reset." : "Contributor updated.")
+                      : send({ action: "addAuthor", id, author }, "Contributor added.")
+                  ))}
+                />
+              )}
+              {currentView === "inbox" && isAdmin && <ContactInbox />}
+              {currentView === "media" && (
+                <MediaLibrary
+                  assets={media}
+                  imageUrls={imageUrls}
+                  canEdit={canEdit}
+                  canDelete={isAdmin}
+                  enabled={uploadsEnabled}
+                  busy={busy}
+                  onBusyChange={setBusy}
+                  onUploaded={addMedia}
+                  onDeleted={(id) => setData((current) => ({
+                    ...current,
+                    media: current.media.filter((asset) => asset.id !== id),
+                  }))}
+                />
+              )}
+              {currentView === "users" && isAdmin && (
+                <>
+                  <NewUserForm busy={busy} send={send} />
+                  <div className="panel record-list">
+                    {users.map((account) => (
+                      <form
+                        className="record"
+                        key={`${account.id}-${account.role}`}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const fields = new FormData(event.currentTarget);
+                          void send(
+                            {
+                              action: "changeRole",
+                              id: account.id,
+                              role: fields.get("role") as Role,
+                            },
+                            "Role updated.",
+                          );
+                        }}
+                      >
+                        <div>
+                          <strong>{account.name}</strong>
+                          <div className="muted record-detail">
+                            {account.email}
+                          </div>
+                        </div>
+                        <select
+                          className="field role-field"
+                          aria-label={`Role for ${account.name}`}
+                          name="role"
+                          defaultValue={account.role}
+                          disabled={busy}
+                        >
+                          {roles.map((role) => (
+                            <option key={role}>{role}</option>
+                          ))}
+                        </select>
+                        <div className="button-row">
+                          <button className="btn" disabled={busy}>
+                            Save role
+                          </button>
+                          {account.role !== "Admin" && (
+                            <button
+                              className="btn delete-action"
+                              type="button"
+                              disabled={busy}
+                              aria-label={`Delete ${account.name}`}
+                              onClick={() => {
+                                setError("");
+                                setDeleteCandidate({ kind: "user", user: account });
+                              }}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </form>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </main>
+      </div>
+      {previewPage && (
+        <PagePreview page={previewPage} authors={authors} onClose={() => setPreviewPage(null)} />
+      )}
+      <dialog
+        className="studio-delete-dialog panel"
+        ref={deleteDialog}
+        aria-labelledby="studio-delete-title"
+        aria-describedby="studio-delete-description"
+        onCancel={(event) => {
+          event.preventDefault();
+          if (!busy) closeDeleteDialog();
+        }}
+      >
+        {deleteCandidate && (
+          <div className="stack">
+            <h2 className="serif" id="studio-delete-title">
+              {deleteCandidate.kind === "page"
+                ? "Delete page?"
+                : "Delete user account?"}
+            </h2>
+            <p id="studio-delete-description">
+              {deleteCandidate.kind === "page" ? (
+                <>
+                  Permanently delete <strong>{deleteCandidate.page.title}</strong>{" "}
+                  and its publication history? Any live version will be removed
+                  from the reader.
+                </>
+              ) : (
+                <>
+                  <strong>{deleteCandidate.user.name}</strong> (
+                  {deleteCandidate.user.email}) will lose dashboard access and be
+                  signed out of active sessions.
+                </>
+              )}
+            </p>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="button-row studio-delete-actions">
+              <button
+                className="btn"
+                type="button"
+                disabled={busy}
+                onClick={closeDeleteDialog}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn danger"
+                type="button"
+                disabled={busy}
+                onClick={confirmDelete}
+              >
+                {busy
+                  ? "Deleting…"
+                  : deleteCandidate.kind === "page"
+                    ? "Delete page"
+                    : "Delete account"}
+              </button>
+            </div>
+          </div>
+        )}
+      </dialog>
+    </div>
+  );
+}

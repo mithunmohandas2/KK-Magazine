@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Temporarily unavailable | മൊഴി</title>
+  <script>
+    try {
+      if (localStorage.getItem('kk-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+    } catch {
+      // The page also works when browser storage is unavailable.
+    }
+  </script>
+  <style>
+    @font-face {
+      font-family: Chilanka;
+      src: url('/fonts/chilanka-malayalam.woff2') format('woff2');
+      font-display: swap;
+    }
+
+    :root {
+      color-scheme: light;
+      --bg: #f0eee7;
+      --surface: #fffdf8;
+      --text: #252722;
+      --muted: #61645a;
+      --line: #d9dbd1;
+      --accent: #a15940;
+      --soft: #e9ebe2;
+      --button: #293a30;
+      --button-hover: #41574a;
+      --button-text: #fffdf8;
+      --serif: Georgia, 'Times New Roman', serif;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #1a211d;
+      --surface: #252d27;
+      --text: #f5f0e4;
+      --muted: #bbbfb1;
+      --line: #444e44;
+      --accent: #e4aa88;
+      --soft: #323d33;
+      --button: #dce5d8;
+      --button-hover: #c3d2bc;
+      --button-text: #252d27;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      display: grid;
+      min-height: 100vh;
+      min-height: 100dvh;
+      place-items: center;
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      width: min(100%, 35rem);
+      padding: clamp(1.8rem, 6vw, 3.5rem);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 14px 40px #19211815;
+      text-align: center;
+    }
+
+    .wordmark {
+      display: inline-grid;
+      place-items: center;
+      min-width: 5.25rem;
+      min-height: 4.75rem;
+      padding: .55rem .75rem;
+      border-radius: 9px;
+      background: var(--soft);
+      font: 2.5rem/1.05 Chilanka, 'Nirmala UI', 'Noto Sans Malayalam', sans-serif;
+    }
+
+    h1 {
+      margin: 1.5rem 0 .75rem;
+      font: clamp(2rem, 6vw, 3.1rem)/1.05 var(--serif);
+      letter-spacing: -.045em;
+      text-wrap: balance;
+    }
+
+    p { max-width: 29rem; margin: 0 auto; color: var(--muted); font-size: 1rem; line-height: 1.6; }
+    .retry {
+      display: inline-grid;
+      place-items: center;
+      min-height: 2.75rem;
+      margin-top: 1.5rem;
+      padding: .6rem 1.25rem;
+      border-radius: 5px;
+      background: var(--button);
+      color: var(--button-text);
+      font-size: .9rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .retry:hover { background: var(--button-hover); }
+    .retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="wordmark" lang="ml">മൊഴി</div>
+    <h1>The magazine is temporarily unavailable</h1>
+    <p>Check your connection or give the magazine a moment to come back online.</p>
+    <a class="retry" href="/">Try again</a>
+  </main>
+  <script>
+    if (window.location.pathname !== '/offline.html') {
+      const retry = document.querySelector('.retry');
+      retry.href = window.location.href;
+      retry.addEventListener('click', event => {
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        event.preventDefault();
+        window.location.reload();
+      });
+    }
+  </script>
+</body>
+</html>

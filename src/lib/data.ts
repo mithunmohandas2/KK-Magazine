@@ -1,7 +1,117 @@
-export type Author={id:string;name:string;role:string;bio:string;photo:string};
-export type Block={id:string;type:'heading'|'paragraph'|'image'|'quote';text:string;src?:string};
-export type Page={id:string;title:string;template:string;authors:string[];blocks:Block[];status:'Draft'|'In review'|'Approved'|'Published'};
-export type Issue={id:string;title:string;edition:string;description:string;status:string;cover:string;pages:Page[]};
-export const initialAuthors:Author[]=[{id:'a1',name:'Anjali Menon',role:'Culture & Travel Writer',bio:'Stories about people, places and the everyday extraordinary.',photo:'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&q=80'},{id:'a2',name:'Arun Nair',role:'Nature Photographer',bio:'Documenting landscapes and their communities.',photo:'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&q=80'},{id:'a3',name:'Meera Krishnan',role:'Design Editor',bio:'Exploring thoughtful design and creative spaces.',photo:'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=200&q=80'}];
-export const initialIssues:Issue[]=[{id:'i1',title:'The Art of Living',edition:'ISSUE 01 · NOVEMBER 2026',description:'A collection of thoughtful stories on culture, travel, design and the beautiful details of everyday life.',status:'Published',cover:'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1400&q=85',pages:[{id:'p1',title:'Cover',template:'Cover',authors:[],status:'Published',blocks:[{id:'b1',type:'heading',text:'THE ART OF LIVING'},{id:'b2',type:'paragraph',text:'Stories for the curious mind.'},{id:'b3',type:'image',text:'Cover photograph',src:'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1400&q=85'}]},{id:'p2',title:'A World Worth Exploring',template:'Feature',authors:['a1','a2'],status:'Published',blocks:[{id:'b4',type:'heading',text:'A World Worth Exploring'},{id:'b5',type:'paragraph',text:'Beyond the familiar roads, there are places that invite us to slow down. The quiet of a morning forest, the rhythm of a small town, the warmth of a conversation with a stranger — each becomes a story worth keeping.'},{id:'b6',type:'image',text:'Forest landscape',src:'https://images.unsplash.com/photo-1473448912268-2022ce9509d8?w=1100&q=85'},{id:'b7',type:'quote',text:'The most meaningful journeys change the way we see home.'}]},{id:'p3',title:'Spaces That Inspire',template:'Editorial',authors:['a3'],status:'Published',blocks:[{id:'b8',type:'heading',text:'Spaces That Inspire'},{id:'b9',type:'image',text:'Architecture',src:'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?w=1100&q=85'},{id:'b10',type:'paragraph',text:'Good design is not simply about what we see. It is about how a space makes us feel, how light moves across a room, and how ordinary moments become remarkable.'}]}]}];
-export const sampleArticles=[{id:'art1',title:'Finding Beauty in the Everyday',category:'Lifestyle',author:'Anjali Menon',image:'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800&q=80',description:'An invitation to notice the little things that make a life feel full.'},{id:'art2',title:'The Architecture of Calm',category:'Design',author:'Meera Krishnan',image:'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80',description:'How thoughtfully designed spaces shape the way we live.'},{id:'art3',title:'Into the Green',category:'Travel',author:'Arun Nair',image:'https://images.unsplash.com/photo-1448375240586-882707db888b?w=800&q=80',description:'A visual journey into the forests and trails we love.'}];
+export type Author = {
+  id: string;
+  name: string;
+  role: string;
+  bio: string;
+  photo: string;
+  photoAssetId?: string;
+  email?: string;
+  accountId?: string;
+};
+export type Block = {
+  id: string;
+  type: "heading" | "paragraph" | "image" | "video" | "quote";
+  text: string;
+  src?: string;
+  assetId?: string;
+};
+export type MediaKind = "image" | "video";
+export type MediaPurpose = "contributor" | "profile";
+export type MediaAsset = {
+  id: string;
+  publicId?: string;
+  kind: MediaKind;
+  purpose?: MediaPurpose;
+  ownerId?: string;
+  contributorId?: string;
+  deletion?: "pending" | "done";
+  replacedPhoto?: boolean;
+  name: string;
+  format: string;
+  version: number;
+  bytes: number;
+  createdAt: string;
+};
+export function mediaUrl(id: string) {
+  return `/api/media/${encodeURIComponent(id)}`;
+}
+
+export function blockSource({ assetId, src }: Block) {
+  return assetId ? mediaUrl(assetId) : src;
+}
+export const templates = [
+  "Cover",
+  "Feature",
+  "Editorial",
+  "Gallery",
+  "Minimal",
+] as const;
+export type PageContent = {
+  id: string;
+  title: string;
+  template: (typeof templates)[number];
+  authors: string[];
+  blocks: Block[];
+};
+export type PageStatus = "Draft" | "In review" | "Approved" | "Published";
+export type Page = PageContent & { status: PageStatus };
+export type Magazine = {
+  title: string;
+  description: string;
+  cover: string;
+  pages: PageContent[];
+};
+export const magazineName = "മൊഴി";
+export const defaultCoverHeading = "കരിയാത്തൻ കാവിൽ മാസിക";
+export function magazineCoverId(pages: readonly PageContent[]) {
+  const first = pages[0];
+  if (
+    first &&
+    (first.template === "Cover" || first.id === "p1")
+  )
+    return first.id;
+}
+export type EditorialPage = Page & { version: number; reviewNote?: string };
+export const roles = ["Admin", "Editor", "Reviewer", "Publisher"] as const;
+export const minimumPasswordLength = 8;
+export type Role = (typeof roles)[number];
+export type UserProfile = { credit: string; bio: string; photo: string; photoAssetId?: string };
+export type User = { id: string; name: string; email: string; role: Role; profile?: UserProfile; contributorId?: string };
+export type ContactMessage = {
+  id: string;
+  name: string;
+  email: string;
+  message: string;
+  createdAt: number;
+};
+
+export const permissions = {
+  edit: (role: Role) => role === "Admin" || role === "Editor",
+  uploadMedia: (role: Role, purpose?: MediaPurpose) =>
+    purpose === "profile" || role === "Admin" || role === "Editor",
+  editPage: (role: Role, cover: boolean) =>
+    role === "Admin" || (role === "Editor" && !cover),
+  review: (role: Role) => role === "Admin" || role === "Reviewer",
+  publish: (role: Role) => role === "Admin" || role === "Publisher",
+  manageUsers: (role: Role) => role === "Admin",
+};
+
+export type Workspace = {
+  user: User;
+  pages: EditorialPage[];
+  authors: Author[];
+  users: User[];
+  browserDraftsImported: boolean;
+  media: MediaAsset[];
+  uploadsEnabled: boolean;
+};
+
+export const initialAuthors: Author[] = [];
+export const initialMagazine: Magazine = {
+  title: magazineName,
+  description:
+    "A collection of thoughtful stories on culture, travel, design and the beautiful details of everyday life.",
+  cover:
+    "https://res.cloudinary.com/wv3nteri/image/upload/v1795453645/1000720859.jpg",
+  pages: [],
+};
