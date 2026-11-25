@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { minimumPasswordLength, roles, templates } from './data';
+import { contributorNameLanguages, minimumPasswordLength, roles, templates } from './data';
 import { maxPageExportPages, pageExportFormat, pageExportVersion } from './page-transfer';
+import { backgroundClassTokens, isBackgroundClass } from './page-background';
 
 const id = z.string().min(1).max(100);
 export const newContributorId = z.uuid();
@@ -19,6 +20,17 @@ const page = z.object({
   title,
   template: z.enum(templates),
   authors: z.array(id).max(100),
+  contributorNameLanguage: z.enum(contributorNameLanguages).optional(),
+  backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  textColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  backgroundClass: z.string().trim().max(500)
+    .refine(value => backgroundClassTokens(value).every(isBackgroundClass), 'Use supported Tailwind background classes.')
+    .transform(value => value || undefined)
+    .optional(),
+  backgroundImage: z.object({
+    src: imageUrl.optional(),
+    assetId: mediaId.optional(),
+  }).refine(({ src, assetId }) => Boolean(src) !== Boolean(assetId)).optional(),
   blocks: z.array(block).max(500),
 });
 export const pageTransferFile = z.object({
@@ -28,12 +40,15 @@ export const pageTransferFile = z.object({
 });
 const email = z.email().trim().max(254).toLowerCase();
 const author = z.object({
-  name: title,
+  name: z.string().trim().max(200).default(''),
+  nameMalayalam: z.string().trim().max(200).optional(),
   role: z.string().trim().max(200),
   bio: z.string().trim().max(2000),
   photo: z.union([imageUrl, z.literal('')]),
   photoAssetId: mediaId.optional(),
   email: z.union([email, z.literal('')]).optional(),
+}).refine(({ name, nameMalayalam }) => Boolean(name || nameMalayalam), {
+  message: 'Enter a name in English or Malayalam.',
 });
 const version = z.number().int().min(1);
 const password = z.string().min(minimumPasswordLength).max(128);
@@ -73,7 +88,7 @@ export const workspaceCommand = z.discriminatedUnion('action', [
   z.object({ action: z.literal('importPages'), file: pageTransferFile }),
   z.object({ action: z.literal('savePage'), page, version }),
   z.object({ action: z.literal('deletePage'), id, version }),
-  z.object({ action: z.literal('movePage'), id, targetId: id, placement: z.enum(['before', 'after']) }),
+  z.object({ action: z.literal('reorderPages'), previousOrder: z.array(id), order: z.array(id) }),
   z.object({
     action: z.literal('transition'),
     id,
@@ -82,6 +97,7 @@ export const workspaceCommand = z.discriminatedUnion('action', [
     note: z.string().trim().max(2000).optional(),
   }),
   z.object({ action: z.literal('addAuthor'), author, id: newContributorId.optional() }),
+  z.object({ action: z.literal('deleteAuthor'), id }),
   z.object({
     action: z.literal('editAuthor'), id, author,
     accountId: id.nullable(), newPassword: password.optional(),
@@ -92,7 +108,7 @@ export const workspaceCommand = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('importDrafts'),
     pages: z.array(page).max(250),
-    authors: z.array(author.extend({ id })).max(250),
+    authors: z.array(author.safeExtend({ id })).max(250),
   }),
 ]);
 

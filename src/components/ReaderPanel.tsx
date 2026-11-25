@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { regexes } from "zod/v4/core";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -155,18 +156,28 @@ function ContactPanel() {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const [emailError, setEmailError] = useState("");
   const notify = useSuccessToast();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget));
-    setBusy(true);
+    if (busy) return;
     setError("");
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
+    const email = String(values.email ?? "").trim();
+    if (email.length > 254 || !regexes.email.test(email)) {
+      setEmailError("Enter a valid email address, such as name@example.com.");
+      form.querySelector<HTMLInputElement>('input[name="email"]')?.focus();
+      return;
+    }
+    setEmailError("");
+    setBusy(true);
     try {
       const response = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-KK-Request": "1" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, email }),
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
@@ -212,9 +223,17 @@ function ContactPanel() {
           type="email"
           autoComplete="email"
           maxLength={254}
+          aria-invalid={Boolean(emailError)}
+          aria-describedby={emailError ? "reader-email-error" : undefined}
+          onChange={() => setEmailError("")}
           required
         />
       </label>
+      {emailError && (
+        <p className="form-error" id="reader-email-error" role="alert">
+          {emailError}
+        </p>
+      )}
       <label>
         Message
         <textarea

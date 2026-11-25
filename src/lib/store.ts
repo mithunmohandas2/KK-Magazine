@@ -5,7 +5,11 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
-import { cloudinaryConfigured, destroyMedia } from "./cloud-media";
+import {
+  cloudinaryConfigured,
+  destroyMedia,
+  mediaDeliveryUrl,
+} from "./cloud-media";
 import {
   newContributorId,
   newUserInput,
@@ -30,6 +34,7 @@ import {
   type Workspace,
 } from "./data";
 import { useMongo } from "./mongo";
+import { pageContent } from "./page-transfer";
 import type { Account, MagazineState, Repository } from "./repository";
 
 export { RequestError };
@@ -75,13 +80,20 @@ export function publicMagazine() {
     const magazine: ReaderMagazine = {
       title,
       cover,
-      pages: index.map(({ id, title, template, image }) => ({
-        id,
-        title,
-        thumbnail:
-          (image && blockSource(image)) ||
-          (template === "Cover" ? cover : undefined),
-      })),
+      pages: index.map(
+        ({ id, title, template, image, backgroundColor, backgroundImage, backgroundClass }) => {
+          const thumbnail = image && blockSource(image);
+          const backdrop = backgroundImage && blockSource(backgroundImage);
+          return {
+            id,
+            title,
+            thumbnail:
+              template === "Cover"
+              ? backdrop || (backgroundColor || backgroundClass ? undefined : thumbnail || cover)
+                : thumbnail || backdrop,
+          };
+        },
+      ),
     };
     const firstId = index[0]?.id;
     const page =
@@ -96,16 +108,37 @@ async function readerPage(
   page: PageContent,
 ): Promise<ReaderPage> {
   const authors = page.authors.length ? await db.authors(page.authors) : [];
+  const photoIds = authors
+    .map(({ photoAssetId }) => photoAssetId)
+    .filter((id) => id !== undefined);
+  const photos =
+    photoIds.length && cloudinaryConfigured()
+      ? await db.mediaByIds(photoIds)
+      : [];
+  const thumbnails = authorThumbnails(photos);
   return {
     page: withCurrentCoverHeading(page),
-    authors: authors.map(({ id, name, role, photo, photoAssetId }) => ({
-      id,
-      name,
-      role,
-      photo,
-      photoAssetId,
-    })),
+    authors: authors.map(
+      ({ id, name, nameMalayalam, role, photo, photoAssetId }) => ({
+        id,
+        name,
+        nameMalayalam,
+        role,
+        photo,
+        photoAssetId,
+        photoThumbnail: photoAssetId ? thumbnails.get(photoAssetId) : undefined,
+      }),
+    ),
   };
+}
+
+function authorThumbnails(photos: MediaAsset[]) {
+  const thumbnails = new Map<string, string>();
+  for (const photo of photos) {
+    if (photo.kind === "image" && !photo.deletion && !photo.replacedPhoto)
+      thumbnails.set(photo.id, mediaDeliveryUrl(photo, 160));
+  }
+  return thumbnails;
 }
 
 export function publicReaderPage(id: string) {
@@ -293,29 +326,48 @@ export async function updateProfile(
 
 async function readWorkspace(user: User, db: Repository): Promise<Workspace> {
   const state = await db.magazine();
+  const media = await db.listMedia();
+  const uploadsEnabled = cloudinaryConfigured();
+  const isAdmin = permissions.manageUsers(user.role);
   const contributorPhotos = new Set(
     state.authors.map((author) => author.photoAssetId),
+  );
+  const publishedAuthors = new Set(
+    state.pages.flatMap(({ published }) => published?.authors ?? []),
+  );
+  const publicPhotos = new Set(
+    state.authors
+      .filter(({ id }) => publishedAuthors.has(id))
+      .map(({ photoAssetId }) => photoAssetId),
+  );
+  // Only photos already available to public readers can bypass media access checks.
+  const thumbnails = authorThumbnails(
+    uploadsEnabled ? media.filter(({ id }) => publicPhotos.has(id)) : [],
   );
   return {
     user: withContributorProfile(
       user,
       state.authors.find((author) => author.accountId === user.id),
     ),
-    authors: permissions.manageUsers(user.role)
-      ? state.authors
-      : state.authors.map(publicAuthor),
+    authors: state.authors.map((author) => ({
+      ...(isAdmin ? author : publicAuthor(author)),
+      photoThumbnail:
+        author.photoAssetId && publishedAuthors.has(author.id)
+          ? thumbnails.get(author.photoAssetId)
+          : undefined,
+    })),
     pages: state.pages.map(({ published: _published, ...page }) =>
       withCurrentCoverHeading(page),
     ),
     browserDraftsImported: Boolean(state.imported),
-    users: permissions.manageUsers(user.role) ? await db.listAccounts() : [],
-    media: (await db.listMedia()).filter(
+    users: isAdmin ? await db.listAccounts() : [],
+    media: media.filter(
       (asset) =>
         !asset.purpose &&
         !asset.replacedPhoto &&
         !contributorPhotos.has(asset.id),
     ),
-    uploadsEnabled: cloudinaryConfigured(),
+    uploadsEnabled,
   };
 }
 
@@ -362,7 +414,8 @@ function applyMagazineCommand(
         | "changeRole"
         | "deleteUser"
         | "editAuthor"
-        | "movePage"
+        | "deleteAuthor"
+        | "reorderPages"
         | "deletePage";
     }
   >,
@@ -404,7 +457,18 @@ function applyMagazineCommand(
       if (cover && command.page.template !== "Cover") {
         throw new RequestError(409, "The cover must use the Cover template.");
       }
-      Object.assign(page, command.page, { version: page.version + 1 });
+      const authorIds = new Set(state.authors.map(({ id }) => id));
+      if (
+        command.page.authors.some(
+          (id) => !authorIds.has(id) && !page.authors.includes(id),
+        )
+      ) {
+        throw new RequestError(
+          409,
+          "A selected contributor is no longer available. Refresh the page and choose a contributor again.",
+        );
+      }
+      Object.assign(page, pageContent(command.page), { version: page.version + 1 });
       break;
     }
     case "transition": {
@@ -428,11 +492,8 @@ function applyMagazineCommand(
           400,
           "Add a note explaining the changes needed.",
         );
-      if (command.step === "publish") {
-        const { id, title, template, authors, blocks } =
-          withCurrentCoverHeading(page);
-        page.published = { id, title, template, authors, blocks };
-      }
+      if (command.step === "publish")
+        page.published = pageContent(withCurrentCoverHeading(page));
       page.status = transition.to;
       page.version += 1;
       page.reviewNote = command.step === "return" ? command.note : undefined;
@@ -477,8 +538,11 @@ function applyMagazineCommand(
 
 async function validateMedia(db: Repository, pages: PageContent[], importing = false) {
   const references = new Map<string, string>();
-  for (const { blocks } of pages) {
-    for (const block of blocks) {
+  for (const { blocks, backgroundImage } of pages) {
+    const media = backgroundImage?.assetId
+      ? [...blocks, { ...backgroundImage, type: "image" }]
+      : blocks;
+    for (const block of media) {
       if (!block.assetId) continue;
       if (block.src || (block.type !== "image" && block.type !== "video")) {
         throw new RequestError(
@@ -503,7 +567,7 @@ async function validateMedia(db: Repository, pages: PageContent[], importing = f
         400,
         importing
           ? "An imported page references an image or video unavailable in this Media Library."
-          : "That media asset is unavailable for this block.",
+          : "That media asset is unavailable for this page.",
       );
   }
 }
@@ -576,6 +640,9 @@ export async function runCommand(
       }
       await db.changeRole(command.id, command.role);
       if (command.id === user.id) user.role = command.role;
+    } else if (command.action === "deleteAuthor") {
+      requirePermission(permissions.manageUsers(user.role));
+      await db.deleteAuthor(command.id);
     } else if (command.action === "editAuthor") {
       requirePermission(permissions.manageUsers(user.role));
       const { id, author, accountId, newPassword } = command;
@@ -603,7 +670,8 @@ export async function runCommand(
             409,
             "An account with this email already exists.",
           );
-        const name = author.name === existing.name ? account.name : author.name;
+        const name =
+          author.name && author.name !== existing.name ? author.name : account.name;
         const profile = account.profile;
         const replacesSharedPhoto =
           existing.accountId === accountId &&
@@ -643,6 +711,7 @@ export async function runCommand(
       }
       await db.updateAuthor({
         ...author,
+        nameMalayalam: author.nameMalayalam ?? existing.nameMalayalam,
         id,
         accountId: accountId ?? undefined,
       });
@@ -652,34 +721,34 @@ export async function runCommand(
         previousContributorPhoto: existing.photoAssetId,
         previousIds: [existing.photoAssetId],
       });
-    } else if (command.action === "movePage") {
+    } else if (command.action === "reorderPages") {
       requirePermission(permissions.edit(user.role));
-      const { id, targetId, placement } = command;
+      const { order, previousOrder } = command;
       const { pages } = await db.magazine();
       const positions = new Map(
         pages.map((page, position) => [page.id, position]),
       );
-      if (!positions.has(id) || !positions.has(targetId))
-        throw new RequestError(404, "Page not found.");
-      if (id !== targetId) {
-        const cover = magazineCoverId(pages);
-        if (id === cover || (targetId === cover && placement === "before")) {
-          throw new RequestError(409, "The cover must stay first.");
-        }
-        const order = pages
-          .map((page) => page.id)
-          .filter((pageId) => pageId !== id);
-        order.splice(
-          order.indexOf(targetId) + (placement === "after" ? 1 : 0),
-          0,
-          id,
-        );
-        await db.setPagePositions(
-          order
-            .map((id, position) => ({ id, position }))
-            .filter(({ id, position }) => positions.get(id) !== position),
+      const cover = magazineCoverId(pages);
+      if (cover && order[0] !== cover)
+        throw new RequestError(409, "The cover must stay first.");
+
+      const changes = order
+        .map((id, position) => ({ id, position }))
+        .filter(({ id, position }) => positions.get(id) !== position);
+      if (
+        order.length !== pages.length ||
+        new Set(order).size !== pages.length ||
+        order.some((id) => !positions.has(id)) ||
+        (changes.length > 0 &&
+          (previousOrder.length !== pages.length ||
+            previousOrder.some((id, position) => positions.get(id) !== position)))
+      ) {
+        throw new RequestError(
+          409,
+          "The page list changed. Cancel and reopen Magazine pages before reordering again.",
         );
       }
+      await db.setPagePositions(changes);
     } else if (command.action === "deletePage") {
       requirePermission(permissions.edit(user.role));
       const state = await db.magazine();
@@ -892,6 +961,15 @@ export function deliverableMedia(id: string, token?: string) {
       const user = await findSession(token, db);
       if (user && (asset.ownerId === user.id || (await db.authorUsesPhoto(id))))
         return asset;
+      if (
+        user &&
+        permissions.manageUsers(user.role) &&
+        asset.kind === "image" &&
+        !asset.deletion &&
+        asset.ownerId &&
+        (await db.accountById(asset.ownerId))?.profile?.photoAssetId === id
+      )
+        return asset;
     } else if ((await db.mediaIsPublished(id)) || (await findSession(token, db))) {
       return asset;
     }
@@ -932,5 +1010,14 @@ export function contactInbox(token: string | undefined, page: number) {
       messages: messages.slice(0, limit),
       hasMore: messages.length > limit,
     };
+  });
+}
+
+export function deleteContactMessage(token: string | undefined, id: string) {
+  return access(true, async (db) => {
+    const user = await findSession(token, db);
+    if (!user) throw new RequestError(401, "Log in to delete reader messages.");
+    requirePermission(permissions.manageUsers(user.role));
+    await db.deleteContact(id);
   });
 }

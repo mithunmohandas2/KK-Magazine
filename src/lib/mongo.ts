@@ -62,6 +62,10 @@ async function connect(uri: string) {
         { "page.published.blocks.assetId": 1 },
         { sparse: true },
       ),
+      data.pages.createIndex(
+        { "page.published.backgroundImage.assetId": 1 },
+        { sparse: true },
+      ),
       data.pages.createIndex({ "page.published.authors": 1 }, { sparse: true }),
       data.authors.createIndex({ "value.name": 1 }),
       data.authors.createIndex({ "value.photoAssetId": 1 }, { sparse: true }),
@@ -183,6 +187,9 @@ function repository(
                 id: "$page.published.id",
                 title: "$page.published.title",
                 template: "$page.published.template",
+                backgroundColor: "$page.published.backgroundColor",
+                backgroundImage: "$page.published.backgroundImage",
+                backgroundClass: "$page.published.backgroundClass",
                 image: {
                   $let: {
                     vars: {
@@ -269,6 +276,19 @@ function repository(
         { $set: { value: author } },
         options,
       );
+    },
+    async deleteAuthor(id) {
+      await data.pages.updateMany(
+        { "page.authors": id },
+        { $pull: { "page.authors": id }, $inc: { "page.version": 1 } },
+        options,
+      );
+      await data.pages.updateMany(
+        { "page.published.authors": id },
+        { $pull: { "page.published.authors": id } },
+        options,
+      );
+      await data.authors.deleteOne({ _id: id }, options);
     },
     async saveMagazine(_state, changes) {
       if (changes.pages.length) {
@@ -404,6 +424,12 @@ function repository(
         .toArray();
       return rows.map((row) => row.value);
     },
+    async mediaByIds(ids) {
+      const rows = await data.assets
+        .find({ _id: { $in: ids } }, options)
+        .toArray();
+      return rows.map((row) => row.value);
+    },
     async media(id) {
       return (await data.assets.findOne({ _id: id }, options))?.value;
     },
@@ -438,6 +464,8 @@ function repository(
           $or: [
             { "page.blocks.assetId": id },
             { "page.published.blocks.assetId": id },
+            { "page.backgroundImage.assetId": id },
+            { "page.published.backgroundImage.assetId": id },
           ],
         },
         projection,
@@ -485,7 +513,12 @@ function repository(
     async mediaIsPublished(id) {
       return Boolean(
         await data.pages.findOne(
-          { "page.published.blocks.assetId": id },
+          {
+            $or: [
+              { "page.published.blocks.assetId": id },
+              { "page.published.backgroundImage.assetId": id },
+            ],
+          },
           { ...options, projection: { _id: 1 } },
         ),
       );
@@ -504,6 +537,9 @@ function repository(
         { _id: message.id, value: message },
         options,
       );
+    },
+    async deleteContact(id) {
+      await data.contacts.deleteOne({ _id: id }, options);
     },
     async listContacts(offset, limit) {
       const rows = await data.contacts

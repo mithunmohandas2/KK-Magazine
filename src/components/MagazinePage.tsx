@@ -1,12 +1,14 @@
 import {
   blockSource,
+  contributorName,
   magazineName,
   mediaUrl,
   type Block,
   type PageContent,
   type ReaderAuthor,
 } from "@/lib/data";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { backgroundClassTokens, isBackgroundClass } from "@/lib/page-background";
 import ImageMaximize from "./ImageMaximize";
 import ResponsiveImage from "./ResponsiveImage";
 import YouTubePlayer from "./YouTubePlayer";
@@ -18,6 +20,18 @@ const featureImageSizes =
 
 function contentLanguage(text: string) {
   return /^\P{L}*\p{Script=Malayalam}/u.test(text) ? "ml" : undefined;
+}
+
+function backgroundInk(color: string | undefined) {
+  if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return;
+  const [red, green, blue] = [1, 3, 5].map((offset) => {
+    const channel = Number.parseInt(color.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return luminance > 0.179 ? "#111" : "#fff";
 }
 
 function youtubeVideoId(block: Block) {
@@ -145,18 +159,25 @@ export default function MagazinePage({
   const byline = creditedAuthors.length > 0 && (
     <footer className="byline" aria-label="Authors">
       <ul className="byline-authors" role="list">
-        {creditedAuthors.map(({ id, name, role, photo, photoAssetId }) => {
+        {creditedAuthors.map((author) => {
+          const { id, role, photo, photoAssetId, photoThumbnail } = author;
+          const name = contributorName(author, page.contributorNameLanguage);
           const src = photoAssetId ? mediaUrl(photoAssetId) : photo?.trim();
           const credit = role?.trim();
           return (
             <li key={id} className="byline-author">
               {src && (
-                <ResponsiveImage
+                <ImageMaximize
                   src={src}
-                  alt=""
                   className="byline-photo"
-                  sizes="48px"
-                />
+                  description={`photo of ${name}`}
+                >
+                  <ResponsiveImage
+                    src={photoThumbnail || src}
+                    alt=""
+                    sizes="48px"
+                  />
+                </ImageMaximize>
               )}
               <div>
                 <span className="byline-name" lang={contentLanguage(name)}>
@@ -224,24 +245,66 @@ export default function MagazinePage({
     return content;
   };
 
-  const coverSource = (coverImage && blockSource(coverImage)) || cover;
-  if (page.template === "Cover" && coverSource) {
+  const backgroundClass = backgroundClassTokens(page.backgroundClass)
+    .filter(isBackgroundClass)
+    .join(" ");
+  const backgroundSource =
+    page.backgroundImage && blockSource(page.backgroundImage);
+  const customized = Boolean(
+    page.backgroundColor || backgroundSource || page.textColor || backgroundClass,
+  );
+  const coverSource =
+    backgroundSource ||
+    (!page.backgroundColor &&
+      !backgroundClass &&
+      ((coverImage && blockSource(coverImage)) || cover));
+  const isCover = page.template === "Cover" && (Boolean(coverSource) || customized);
+  const customStyle = customized
+    ? ({
+        "--page-background-color": page.backgroundColor,
+        "--page-background-ink":
+          page.textColor ||
+          (isCover && coverSource
+            ? "#fffbef"
+            : backgroundInk(page.backgroundColor) ?? (isCover ? "#fffbef" : undefined)),
+      } as CSSProperties)
+    : undefined;
+  const appearance = {
+    style: customStyle,
+    "data-customized": customized || undefined,
+    "data-background-class": Boolean(backgroundClass) || undefined,
+  };
+  const decoration = backgroundClass && (
+    <div className={`page-background-decoration ${backgroundClass}`} aria-hidden="true" />
+  );
+  if (isCover) {
     const title = heading?.text || page.title;
     return (
-      <article className="magazine-cover">
-        <ResponsiveImage
-          className="cover-image"
-          src={coverSource}
-          alt={coverImage?.text || ""}
-          fill
-          eager
-          sizes={reader ? "100vw" : "(max-width: 630px) 95vw, 560px"}
-          highPriority={prioritizeHero}
-        />
-        <ImageMaximize
-          src={coverSource}
-          description={coverImage?.text.trim() || "cover image"}
-        />
+      <article
+        className="magazine-cover"
+        {...appearance}
+        data-cover-image={Boolean(coverSource) || undefined}
+      >
+        {coverSource && (
+          <>
+            <ResponsiveImage
+              className="cover-image"
+              src={coverSource}
+              alt={backgroundSource ? "" : coverImage?.text || ""}
+              fill
+              eager
+              sizes={reader ? "100vw" : "(max-width: 630px) 95vw, 560px"}
+              highPriority={prioritizeHero}
+            />
+            <ImageMaximize
+              src={coverSource}
+              description={
+                (!backgroundSource && coverImage?.text.trim()) || "cover image"
+              }
+            />
+          </>
+        )}
+        {decoration}
         <div className="cover-content">
           <div className="cover-wordmark" lang="ml">
             {magazineName}
@@ -265,6 +328,19 @@ export default function MagazinePage({
     <h1 lang={contentLanguage(page.title)}>{page.title}</h1>
   );
   const templateClass = `magazine-paper template-${page.template.toLowerCase()}`;
+  const paperAttributes = {
+    ...appearance,
+    "data-background-image": Boolean(backgroundSource) || undefined,
+  };
+  const paperBackground = backgroundSource && (
+    <ResponsiveImage
+      className="paper-background-image"
+      src={backgroundSource}
+      alt=""
+      fill
+      sizes={reader ? pageImageSizes : sizes}
+    />
+  );
 
   if (
     media.length === 1 &&
@@ -278,7 +354,12 @@ export default function MagazinePage({
     const featured = media[0];
     const position = page.blocks.indexOf(featured);
     return (
-      <article className={`${templateClass} magazine-with-feature`}>
+      <article
+        className={`${templateClass} magazine-with-feature`}
+        {...paperAttributes}
+      >
+        {paperBackground}
+        {decoration}
         <div className="magazine-feature-lead">
           {fallbackTitle}
           {renderBlocks(page.blocks.slice(0, position))}
@@ -303,7 +384,9 @@ export default function MagazinePage({
     const leadHeading =
       heading && heading === page.blocks[0] ? heading : undefined;
     return (
-      <article className={templateClass}>
+      <article className={templateClass} {...paperAttributes}>
+        {paperBackground}
+        {decoration}
         {leadHeading ? (
           <ContentBlock block={leadHeading} firstHeading />
         ) : (
@@ -318,7 +401,9 @@ export default function MagazinePage({
   }
 
   return (
-    <article className={templateClass}>
+    <article className={templateClass} {...paperAttributes}>
+      {paperBackground}
+      {decoration}
       {fallbackTitle}
       {renderBlocks(page.blocks)}
       {byline}

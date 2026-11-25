@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { RequestError } from '@/lib/errors';
-import { contactInbox, sessionCookie, submitContact } from '@/lib/store';
+import { contactInbox, deleteContactMessage, sessionCookie, submitContact } from '@/lib/store';
 
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -38,6 +38,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(await contactInbox(token, page.data), { headers });
   } catch (error) {
     if (error instanceof RequestError) return NextResponse.json({ error: error.message }, { status: error.status, headers });
+    throw error;
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  if (request.headers.get('x-kk-request') !== '1') {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 403, headers });
+  }
+  const id = z.uuid().safeParse(request.nextUrl.searchParams.get('id'));
+  if (!id.success) {
+    return NextResponse.json({ error: 'Invalid message ID.' }, { status: 400, headers });
+  }
+  try {
+    const token = (await cookies()).get(sessionCookie)?.value;
+    await deleteContactMessage(token, id.data);
+    return new Response(null, { status: 204, headers });
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return NextResponse.json({ error: error.message }, { status: error.status, headers });
+    }
     throw error;
   }
 }

@@ -28,9 +28,11 @@ import {
 } from "lucide-react";
 import {
   blockSource,
+  contributorName,
   initialMagazine,
   magazineCoverId,
   magazineName,
+  mediaUrl,
   minimumPasswordLength,
   permissions,
   roles,
@@ -46,11 +48,14 @@ import {
 } from "@/lib/data";
 import type { Transition, WorkspaceCommand } from "@/lib/commands";
 import { pageContent } from "@/lib/page-transfer";
+import { backgroundClassTokens, isBackgroundClass } from "@/lib/page-background";
+import ContributorPicker from "./ContributorPicker";
 import MagazinePage from "./MagazinePage";
 import FullScreenImage, { type ImagePreview } from "./FullScreenImage";
 import MediaUpload from "./MediaUpload";
 import PageList from "./PageList";
 import PageTransfer from "./PageTransfer";
+import PersonAvatar from "./PersonAvatar";
 import StudioAccount from "./StudioAccount";
 import { useSuccessToast } from "./ToastProvider";
 import ResponsiveImage from "./ResponsiveImage";
@@ -78,6 +83,8 @@ type Send = (
   command: WorkspaceCommand,
   message: string,
 ) => Promise<Workspace | null>;
+
+const workspaceFreshnessMs = 30_000;
 
 const blockLabels: Record<Block["type"], string> = {
   heading: "Heading",
@@ -211,11 +218,30 @@ function BlockTools({
   );
 }
 
-function NewUserForm({ send, busy }: { send: Send; busy: boolean }) {
+function NewUserDialog({
+  send,
+  busy,
+  error,
+  onClose,
+}: {
+  send: Send;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element || element.open) return;
+    element.showModal();
+    element.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
+  }, []);
+
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const fields = new FormData(form);
+    if (busy) return;
+    const fields = new FormData(event.currentTarget);
     const result = await send(
       {
         action: "createUser",
@@ -228,53 +254,88 @@ function NewUserForm({ send, busy }: { send: Send; busy: boolean }) {
       },
       "Account created.",
     );
-    if (result) form.reset();
+    if (result) dialog.current?.close();
   }
 
   return (
-    <form className="panel form-grid" onSubmit={create}>
-      <h2 className="form-wide serif">Create account</h2>
-      <label>
-        Name
-        <input className="field" name="name" required maxLength={200} />
-      </label>
-      <label>
-        Email
-        <input
-          className="field"
-          name="email"
-          type="email"
-          required
-          maxLength={254}
-          autoComplete="off"
-        />
-      </label>
-      <label>
-        Initial password
-        <input
-          className="field"
-          name="password"
-          type="password"
-          required
-          minLength={minimumPasswordLength}
-          maxLength={128}
-          autoComplete="new-password"
-        />
-      </label>
-      <label>
-        Role
-        <select className="field" name="role" defaultValue="Editor">
-          {roles.map((role) => (
-            <option key={role}>{role}</option>
-          ))}
-        </select>
-      </label>
-      <div className="form-wide">
-        <button className="btn primary" disabled={busy}>
-          Create user
-        </button>
-      </div>
-    </form>
+    <dialog
+      ref={dialog}
+      className="panel studio-profile-dialog"
+      aria-labelledby="create-account-title"
+      onClose={onClose}
+      onCancel={(event) => {
+        if (busy) event.preventDefault();
+      }}
+    >
+      <form className="form-grid" onSubmit={create}>
+        <div className="form-wide panel-heading">
+          <h2 className="serif" id="create-account-title">
+            Create account
+          </h2>
+          <button
+            type="button"
+            className="studio-icon-button"
+            disabled={busy}
+            aria-label="Close create account form"
+            onClick={() => dialog.current?.close()}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+        <label>
+          Name
+          <input className="field" name="name" required maxLength={200} disabled={busy} />
+        </label>
+        <label>
+          Email
+          <input
+            className="field"
+            name="email"
+            type="email"
+            required
+            maxLength={254}
+            autoComplete="off"
+            disabled={busy}
+          />
+        </label>
+        <label>
+          Initial password
+          <input
+            className="field"
+            name="password"
+            type="password"
+            required
+            minLength={minimumPasswordLength}
+            maxLength={128}
+            autoComplete="new-password"
+            disabled={busy}
+          />
+        </label>
+        <label>
+          Role
+          <select
+            className="field"
+            name="role"
+            defaultValue="Editor"
+            disabled={busy}
+          >
+            {roles.map((role) => (
+              <option key={role}>{role}</option>
+            ))}
+          </select>
+        </label>
+        {error && (
+          <p className="form-wide form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="form-wide">
+          <button className="btn primary" disabled={busy}>
+            {busy ? "Creating…" : "Create user"}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
@@ -313,6 +374,9 @@ function PageEditor({
   const [fullScreenImage, setFullScreenImage] = useState<ImagePreview | null>(
     null,
   );
+  const contributorLanguage = draft.contributorNameLanguage ?? "en";
+  const unsupportedBackgroundClass = backgroundClassTokens(draft.backgroundClass)
+    .find((token) => !isBackgroundClass(token));
   const canEdit = permissions.editPage(role, isCover);
   const editable = page.status === "Draft" && canEdit;
   const dirty = JSON.stringify(draft) !== JSON.stringify(pageContent(page));
@@ -429,6 +493,16 @@ function PageEditor({
     );
   }
 
+  function updateBackgroundImage(change: NonNullable<PageContent["backgroundImage"]>) {
+    setDraft((current) => {
+      const image = { ...current.backgroundImage, ...change };
+      return {
+        ...current,
+        backgroundImage: image.src || image.assetId ? image : undefined,
+      };
+    });
+  }
+
   function imagePreview(src: string | undefined, description: string) {
     if (!src || !/^(https?:\/\/|\/api\/media\/)/i.test(src)) return null;
     return (
@@ -483,7 +557,7 @@ function PageEditor({
           {editable && (
             <button
               className="btn"
-              disabled={busy || !dirty || !draft.title.trim()}
+              disabled={busy || !dirty || !draft.title.trim() || Boolean(unsupportedBackgroundClass)}
               onClick={() =>
                 send(
                   { action: "savePage", page: draft, version: page.version },
@@ -687,57 +761,157 @@ function PageEditor({
               </select>
             </label>
             <label>
-              Primary contributor
+              Contributor name language
               <select
                 className="field"
-                value={draft.authors[0] || ""}
+                value={contributorLanguage}
                 onChange={(event) => {
-                  const id = event.target.value;
-                  setDraft({
-                    ...draft,
-                    authors: id
-                      ? [
-                          id,
-                          ...draft.authors
-                            .slice(1)
-                            .filter((author) => author !== id),
-                        ]
-                      : [],
-                  });
+                  const language = event.target.value === "ml" ? "ml" : "en";
+                  setDraft((current) => ({
+                    ...current,
+                    contributorNameLanguage:
+                      language === "en" && !page.contributorNameLanguage
+                        ? undefined
+                        : language,
+                  }));
                 }}
               >
-                <option value="">No contributor</option>
-                {authors.map((author) => (
-                  <option value={author.id} key={author.id}>
-                    {author.name}
-                  </option>
-                ))}
+                <option value="en">English</option>
+                <option value="ml">Malayalam</option>
               </select>
             </label>
+            <ContributorPicker
+              label="Primary contributor"
+              options={authors}
+              language={contributorLanguage}
+              value={draft.authors[0] || ""}
+              disabled={busy}
+              onChange={(id) =>
+                setDraft((current) => ({
+                  ...current,
+                  authors: id
+                    ? [
+                        id,
+                        ...current.authors.slice(1).filter((author) => author !== id),
+                      ]
+                    : [],
+                }))
+              }
+            />
             {draft.authors[0] && (
-              <div className="stack">
-                <strong>Additional contributors</strong>
-                {authors
-                  .filter((author) => author.id !== draft.authors[0])
-                  .map((author) => (
-                    <label className="check-label" key={author.id}>
-                      <input
-                        type="checkbox"
-                        checked={draft.authors.includes(author.id)}
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            authors: event.target.checked
-                              ? [...draft.authors, author.id]
-                              : draft.authors.filter((id) => id !== author.id),
-                          })
-                        }
-                      />
-                      {author.name}
-                    </label>
-                  ))}
-              </div>
+              <ContributorPicker
+                multiple
+                label="Additional contributors"
+                language={contributorLanguage}
+                options={authors.filter((author) => author.id !== draft.authors[0])}
+                values={draft.authors.slice(1)}
+                disabled={busy}
+                onChange={(ids) =>
+                  setDraft((current) => ({
+                    ...current,
+                    authors: [current.authors[0], ...ids],
+                  }))
+                }
+              />
             )}
+            <section
+              className="page-customize stack"
+              aria-labelledby="page-customize-title"
+            >
+              <h3 className="serif" id="page-customize-title">
+                Customize
+              </h3>
+              <label>
+                Background Color
+                <input
+                  className="field page-background-color"
+                  type="color"
+                  value={draft.backgroundColor ?? "#fffdf8"}
+                  onChange={(event) => {
+                    const backgroundColor = event.target.value;
+                    setDraft((current) => ({ ...current, backgroundColor }));
+                  }}
+                />
+              </label>
+              {draft.backgroundColor && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    setDraft((current) => ({ ...current, backgroundColor: undefined }))
+                  }
+                >
+                  Reset color
+                </button>
+              )}
+              <label>
+                Text Color
+                <input
+                  className="field page-background-color"
+                  type="color"
+                  value={draft.textColor ?? "#252722"}
+                  onChange={(event) => {
+                    const textColor = event.target.value;
+                    setDraft((current) => ({ ...current, textColor }));
+                  }}
+                />
+              </label>
+              {draft.textColor && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    setDraft((current) => ({ ...current, textColor: undefined }))
+                  }
+                >
+                  Reset text color
+                </button>
+              )}
+              <label htmlFor="page-background-class">Background Class</label>
+              <GrowingTextarea
+                id="page-background-class"
+                value={draft.backgroundClass ?? ""}
+                placeholder="bg-linear-to-r from-indigo-700 to-violet-500"
+                aria-describedby="page-background-class-help"
+                aria-invalid={Boolean(unsupportedBackgroundClass)}
+                maxLength={500}
+                onChange={(event) => {
+                  const backgroundClass = event.target.value || undefined;
+                  setDraft((current) => ({ ...current, backgroundClass }));
+                }}
+              />
+              <p className="muted text-sm" id="page-background-class-help">
+                {unsupportedBackgroundClass
+                  ? `Unsupported background class: ${unsupportedBackgroundClass}`
+                  : "Use Tailwind background colors, gradients, opacity, rounded corners, or shadows."}
+              </p>
+              <fieldset className="stack">
+                <legend>Background Image</legend>
+                {mediaFields(
+                  draft.backgroundImage ?? {},
+                  "image",
+                  updateBackgroundImage,
+                  "Image URL",
+                )}
+                {draft.backgroundImage && (
+                  <>
+                    {imagePreview(
+                      blockSource(draft.backgroundImage),
+                      "Page background image",
+                    )}
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() =>
+                        setDraft((current) => ({ ...current, backgroundImage: undefined }))
+                      }
+                    >
+                      Remove background image
+                    </button>
+                  </>
+                )}
+              </fieldset>
+            </section>
           </fieldset>
         </div>
       ) : (
@@ -825,8 +999,14 @@ export default function Studio({
 }) {
   const [data, setData] = useState(initialWorkspace);
   const [view, setView] = useState<View>("pages");
+  const [directorySearch, setDirectorySearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [previewPage, setPreviewPage] = useState<EditorialPage | null>(null);
+  const [showNewUser, setShowNewUser] = useState(false);
+  const [pageOrder, setPageOrder] = useState<{
+    original: string[];
+    draft: string[];
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const notify = useSuccessToast();
   const [error, setError] = useState("");
@@ -837,12 +1017,18 @@ export default function Studio({
     null,
   );
   const [deleteCandidate, setDeleteCandidate] = useState<
-    { kind: "user"; user: User } | { kind: "page"; page: EditorialPage } | null
+    | { kind: "user"; user: User }
+    | { kind: "page"; page: EditorialPage }
+    | { kind: "author"; author: Author }
+    | null
   >(null);
   const mobileDrawer = useRef<HTMLDialogElement>(null);
   const deleteDialog = useRef<HTMLDialogElement>(null);
   const viewHeading = useRef<HTMLHeadingElement>(null);
+  const addUserButton = useRef<HTMLButtonElement>(null);
   const contentPanel = useRef<HTMLElement>(null);
+  const lastWorkspaceRefresh = useRef(0);
+  const workspaceRefresh = useRef<AbortController | null>(null);
   const { user, pages, authors, users, media, uploadsEnabled } = data;
   const isAdmin = permissions.manageUsers(user.role);
   const canEdit = permissions.edit(user.role);
@@ -850,11 +1036,22 @@ export default function Studio({
   const page = pages.find((page) => page.id === selected);
 
   function addMedia(asset: MediaAsset) {
+    cancelWorkspaceRefresh();
     setData((current) => ({
       ...current,
       media: [asset, ...current.media.filter((item) => item.id !== asset.id)],
     }));
   }
+
+  function cancelWorkspaceRefresh() {
+    workspaceRefresh.current?.abort();
+    workspaceRefresh.current = null;
+  }
+
+  useEffect(() => {
+    lastWorkspaceRefresh.current = Date.now();
+    return () => workspaceRefresh.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (contentPanel.current) contentPanel.current.scrollTop = 0;
@@ -892,6 +1089,7 @@ export default function Studio({
   }, [isAdmin, data.browserDraftsImported]);
 
   async function send(command: WorkspaceCommand, success: string) {
+    cancelWorkspaceRefresh();
     setBusy(true);
     setError("");
     try {
@@ -906,6 +1104,7 @@ export default function Studio({
       }
       if (!response.ok) throw new Error((await response.json()).error);
       const next: Workspace = await response.json();
+      lastWorkspaceRefresh.current = Date.now();
       setData(next);
       if (!permissions.manageUsers(next.user.role) && view === "users")
         setView("pages");
@@ -924,28 +1123,51 @@ export default function Studio({
   }
 
   async function navigate(next: View) {
+    const refreshCurrentSection = next === view && !selected;
+    if (next !== view) setDirectorySearch("");
     setView(next);
     setSelected(null);
+    setPageOrder(null);
     setError("");
+    if (
+      workspaceRefresh.current ||
+      (!refreshCurrentSection &&
+        Date.now() - lastWorkspaceRefresh.current < workspaceFreshnessMs)
+    )
+      return;
+
+    const request = new AbortController();
+    workspaceRefresh.current = request;
     try {
-      const response = await fetch("/api/workspace", { cache: "no-store" });
+      const response = await fetch("/api/workspace", {
+        cache: "no-store",
+        signal: request.signal,
+      });
+      if (request.signal.aborted) return;
       if (response.status === 401) {
         window.location.assign("/login");
         return;
       }
       if (!response.ok)
         throw new Error("The dashboard could not be refreshed.");
-      setData(await response.json());
+      const nextWorkspace: Workspace = await response.json();
+      if (request.signal.aborted) return;
+      lastWorkspaceRefresh.current = Date.now();
+      setData(nextWorkspace);
     } catch (error) {
+      if (request.signal.aborted) return;
       setError(
         error instanceof Error
           ? error.message
           : "The dashboard could not be refreshed.",
       );
+    } finally {
+      if (workspaceRefresh.current === request) workspaceRefresh.current = null;
     }
   }
 
   async function logout() {
+    cancelWorkspaceRefresh();
     setBusy(true);
     try {
       const response = await fetch("/api/session", {
@@ -980,6 +1202,26 @@ export default function Studio({
     if (result) setSelected(id);
   }
 
+  function startReordering() {
+    cancelWorkspaceRefresh();
+    const order = pages.map((page) => page.id);
+    setError("");
+    setPageOrder({ original: order, draft: order });
+  }
+
+  async function savePageOrder() {
+    if (!pageOrder || !canEdit || busy) return;
+    const result = await send(
+      {
+        action: "reorderPages",
+        previousOrder: pageOrder.original,
+        order: pageOrder.draft,
+      },
+      "Page order saved.",
+    );
+    if (result) setPageOrder(null);
+  }
+
   function closeDeleteDialog() {
     deleteDialog.current?.close();
     setDeleteCandidate(null);
@@ -994,10 +1236,14 @@ export default function Studio({
             id: deleteCandidate.page.id,
             version: deleteCandidate.page.version,
           }
-        : { action: "deleteUser", id: deleteCandidate.user.id },
-      deleteCandidate.kind === "page"
-        ? "Page deleted."
-        : "User account deleted.",
+        : deleteCandidate.kind === "author"
+          ? { action: "deleteAuthor", id: deleteCandidate.author.id }
+          : { action: "deleteUser", id: deleteCandidate.user.id },
+      {
+        page: "Page deleted.",
+        author: "Contributor deleted.",
+        user: "User account deleted.",
+      }[deleteCandidate.kind],
     );
     if (result) {
       closeDeleteDialog();
@@ -1025,21 +1271,45 @@ export default function Studio({
   )
     ? view
     : "pages";
-  const visiblePages = pages.filter((page) =>
-    currentView === "reviews"
-      ? page.status === "In review"
-      : currentView === "publishing"
-        ? page.status === "Approved"
-        : true,
-  );
+  const directoryQuery = directorySearch.trim().normalize().toLowerCase();
+  const searchLabel =
+    currentView === "authors"
+      ? "Search contributors"
+      : currentView === "users" && isAdmin
+        ? "Search users"
+        : undefined;
+  const visibleUsers =
+    currentView === "users" && directoryQuery
+      ? users.filter(({ name, email, role }) =>
+          [name, email, role].some((value) =>
+            value.normalize().toLowerCase().includes(directoryQuery),
+          ),
+        )
+      : users;
+  const reordering = currentView === "pages" && canEdit && pageOrder !== null;
+  const orderChanged =
+    pageOrder &&
+    pageOrder.draft.some((id, index) => id !== pageOrder.original[index]);
+  let visiblePages = pages;
+  if (reordering) {
+    const pagesById = new Map(pages.map((page) => [page.id, page]));
+    visiblePages = pageOrder.draft
+      .map((id) => pagesById.get(id))
+      .filter((page) => page !== undefined);
+  } else if (currentView === "reviews") {
+    visiblePages = pages.filter((page) => page.status === "In review");
+  } else if (currentView === "publishing") {
+    visiblePages = pages.filter((page) => page.status === "Approved");
+  }
   const imageUrls = [
     ...new Set([
       initialMagazine.cover,
-      ...pages.flatMap((page) =>
-        page.blocks.flatMap((block) =>
+      ...pages.flatMap(({ backgroundImage, blocks }) => [
+        ...(backgroundImage?.src ? [backgroundImage.src] : []),
+        ...blocks.flatMap((block) =>
           block.type === "image" && block.src ? [block.src] : [],
         ),
-      ),
+      ]),
     ]),
   ];
   const sectionLinks = (
@@ -1120,7 +1390,8 @@ export default function Studio({
           busy={busy}
           uploadsEnabled={uploadsEnabled}
           onLogout={logout}
-          onUpdated={(updated, detailsChanged) =>
+          onUpdated={(updated, detailsChanged) => {
+            cancelWorkspaceRefresh();
             setData((current) => ({
               ...current,
               user: updated,
@@ -1138,6 +1409,10 @@ export default function Studio({
                             bio: updated.profile.bio,
                             photo: updated.profile.photo,
                             photoAssetId: updated.profile.photoAssetId,
+                            photoThumbnail:
+                              author.photoAssetId === updated.profile.photoAssetId
+                                ? author.photoThumbnail
+                                : undefined,
                           }
                         : author,
                     )
@@ -1145,8 +1420,8 @@ export default function Studio({
               users: current.users.map((account) =>
                 account.id === updated.id ? updated : account,
               ),
-            }))
-          }
+            }));
+          }}
         />
       </header>
       <dialog
@@ -1204,7 +1479,7 @@ export default function Studio({
               </button>
             </div>
           )}
-          {error && !deleteCandidate && !contributorForm && (
+          {error && !deleteCandidate && !contributorForm && !showNewUser && (
             <p className="form-error" role="alert">
               {error}
             </p>
@@ -1235,34 +1510,99 @@ export default function Studio({
                 </h1>
                 {currentView === "pages" && canEdit && (
                   <div className="button-row">
-                    <PageTransfer pages={pages} busy={busy} send={send} />
-                    <button
-                      className="btn primary"
-                      disabled={busy}
-                      onClick={createPage}
-                    >
-                      <Plus size={17} aria-hidden="true" />
-                      New page
-                    </button>
+                    {reordering ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => {
+                            setPageOrder(null);
+                            setError("");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={busy || !orderChanged}
+                          onClick={savePageOrder}
+                        >
+                          {busy ? "Saving…" : "Save order"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <PageTransfer pages={pages} busy={busy} send={send} />
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={startReordering}
+                          disabled={busy || pages.length - Number(Boolean(coverId)) < 2}
+                        >
+                          Reorder pages
+                        </button>
+                        <button
+                          className="btn primary"
+                          disabled={busy}
+                          onClick={createPage}
+                        >
+                          <Plus size={17} aria-hidden="true" />
+                          New page
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
-                {currentView === "authors" && canEdit && (
-                  <button
-                    type="button"
-                    className="btn primary"
-                    disabled={busy}
-                    aria-haspopup="dialog"
-                    onClick={() => {
-                      setError("");
-                      setContributorForm("new");
-                    }}
-                  >
-                    <Plus size={17} aria-hidden="true" />
-                    Add contributor
-                  </button>
+                {searchLabel && (
+                  <div className="directory-actions">
+                    <input
+                      type="search"
+                      className="field"
+                      aria-label={searchLabel}
+                      placeholder={searchLabel}
+                      value={directorySearch}
+                      onChange={(event) => setDirectorySearch(event.target.value)}
+                    />
+                    {currentView === "authors" && canEdit && (
+                      <button
+                        type="button"
+                        className="btn primary"
+                        disabled={busy}
+                        aria-haspopup="dialog"
+                        onClick={() => {
+                          setError("");
+                          setContributorForm("new");
+                        }}
+                      >
+                        <Plus size={17} aria-hidden="true" />
+                        Add contributor
+                      </button>
+                    )}
+                    {currentView === "users" && isAdmin && (
+                      <button
+                        type="button"
+                        className="btn primary"
+                        disabled={busy}
+                        aria-label="Add user"
+                        aria-haspopup="dialog"
+                        ref={addUserButton}
+                        onClick={() => {
+                          cancelWorkspaceRefresh();
+                          setError("");
+                          setShowNewUser(true);
+                        }}
+                      >
+                        <Plus size={17} aria-hidden="true" />
+                        Add
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               {currentView === "pages" &&
+                !reordering &&
                 isAdmin &&
                 !data.browserDraftsImported &&
                 legacy && (
@@ -1290,8 +1630,14 @@ export default function Studio({
                   coverId={coverId}
                   pages={visiblePages}
                   busy={busy}
-                  canReorder={currentView === "pages" && canEdit}
-                  action={currentView === "reviews" ? "Review" : "Open"}
+                  reordering={reordering}
+                  action={
+                    currentView === "pages"
+                      ? "Edit"
+                      : currentView === "reviews"
+                        ? "Review"
+                        : "Open"
+                  }
                   empty={
                     currentView === "reviews"
                       ? "No pages are awaiting review."
@@ -1300,18 +1646,22 @@ export default function Studio({
                         : "No magazine pages yet."
                   }
                   onOpen={(id) => {
+                    cancelWorkspaceRefresh();
                     setSelected(id);
                     setError("");
                   }}
                   onPreview={
                     currentView === "pages" ? setPreviewPage : undefined
                   }
-                  onMove={(command) => send(command, "Page order saved.")}
+                  onReorder={(draft) => {
+                    setPageOrder((current) => current && { ...current, draft });
+                  }}
                 />
               )}
               {currentView === "authors" && (
                 <Contributors
                   authors={authors}
+                  search={directoryQuery}
                   form={contributorForm}
                   accounts={isAdmin ? users : undefined}
                   busy={busy}
@@ -1321,6 +1671,10 @@ export default function Studio({
                   onEdit={(author) => {
                     setError("");
                     setContributorForm(author);
+                  }}
+                  onDelete={(author) => {
+                    setError("");
+                    setDeleteCandidate({ kind: "author", author });
                   }}
                   onClose={() => {
                     setError("");
@@ -1360,21 +1714,33 @@ export default function Studio({
                   busy={busy}
                   onBusyChange={setBusy}
                   onUploaded={addMedia}
-                  onDeleted={(id) =>
+                  onDeleted={(id) => {
+                    cancelWorkspaceRefresh();
                     setData((current) => ({
                       ...current,
                       media: current.media.filter((asset) => asset.id !== id),
-                    }))
-                  }
+                    }));
+                  }}
                 />
               )}
               {currentView === "users" && isAdmin && (
                 <>
-                  <NewUserForm busy={busy} send={send} />
+                  {showNewUser && (
+                    <NewUserDialog
+                      busy={busy}
+                      error={error}
+                      send={send}
+                      onClose={() => {
+                        setShowNewUser(false);
+                        setError("");
+                        requestAnimationFrame(() => addUserButton.current?.focus());
+                      }}
+                    />
+                  )}
                   <div className="panel record-list">
-                    {users.map((account) => (
+                    {visibleUsers.map((account) => (
                       <form
-                        className="record"
+                        className="record user-record"
                         key={`${account.id}-${account.role}`}
                         onSubmit={(event) => {
                           event.preventDefault();
@@ -1389,27 +1755,39 @@ export default function Studio({
                           );
                         }}
                       >
-                        <div>
-                          <strong>{account.name}</strong>
-                          <div className="muted record-detail">
-                            {account.email}
+                        <div className="person-summary">
+                          <PersonAvatar
+                            name={account.name}
+                            src={
+                              account.profile?.photoAssetId
+                                ? mediaUrl(account.profile.photoAssetId)
+                                : account.profile?.photo
+                            }
+                          />
+                          <div>
+                            <strong>{account.name}</strong>
+                            <div className="muted record-detail">
+                              {account.email}
+                            </div>
                           </div>
                         </div>
-                        <select
-                          className="field role-field"
-                          aria-label={`Role for ${account.name}`}
-                          name="role"
-                          defaultValue={account.role}
-                          disabled={busy}
-                        >
-                          {roles.map((role) => (
-                            <option key={role}>{role}</option>
-                          ))}
-                        </select>
-                        <div className="button-row">
-                          <button className="btn" disabled={busy}>
-                            Save role
-                          </button>
+                        <div className="user-role-actions">
+                          <div className="user-role-controls">
+                            <select
+                              className="field role-field"
+                              aria-label={`Role for ${account.name}`}
+                              name="role"
+                              defaultValue={account.role}
+                              disabled={busy}
+                            >
+                              {roles.map((role) => (
+                                <option key={role}>{role}</option>
+                              ))}
+                            </select>
+                            <button className="btn" disabled={busy}>
+                              Save role
+                            </button>
+                          </div>
                           {account.role !== "Admin" && (
                             <button
                               className="btn delete-action"
@@ -1430,6 +1808,11 @@ export default function Studio({
                         </div>
                       </form>
                     ))}
+                    {!visibleUsers.length && (
+                      <p className="empty-state" role="status">
+                        {directoryQuery ? "No users match your search." : "No users added."}
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -1457,9 +1840,11 @@ export default function Studio({
         {deleteCandidate && (
           <div className="stack">
             <h2 className="serif" id="studio-delete-title">
-              {deleteCandidate.kind === "page"
-                ? "Delete page?"
-                : "Delete user account?"}
+              {{
+                page: "Delete page?",
+                author: "Delete contributor?",
+                user: "Delete user account?",
+              }[deleteCandidate.kind]}
             </h2>
             <p id="studio-delete-description">
               {deleteCandidate.kind === "page" ? (
@@ -1468,6 +1853,12 @@ export default function Studio({
                   <strong>{deleteCandidate.page.title}</strong> and its
                   publication history? Any live version will be removed from the
                   reader.
+                </>
+              ) : deleteCandidate.kind === "author" ? (
+                <>
+                  Permanently delete{" "}
+                  <strong>{contributorName(deleteCandidate.author)}</strong>?
+                  This removes their credit from magazine pages.
                 </>
               ) : (
                 <>
@@ -1499,9 +1890,11 @@ export default function Studio({
               >
                 {busy
                   ? "Deleting…"
-                  : deleteCandidate.kind === "page"
-                    ? "Delete page"
-                    : "Delete account"}
+                  : {
+                      page: "Delete page",
+                      author: "Delete contributor",
+                      user: "Delete account",
+                    }[deleteCandidate.kind]}
               </button>
             </div>
           </div>

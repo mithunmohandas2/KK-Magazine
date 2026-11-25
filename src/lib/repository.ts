@@ -31,7 +31,7 @@ export type Account = User & {
 export type Session = { token: string; userId: string; expires: number };
 export type PublishedPageSummary = Pick<
   PageContent,
-  "id" | "title" | "template"
+  "id" | "title" | "template" | "backgroundColor" | "backgroundImage" | "backgroundClass"
 > & { image?: Pick<Block, "src" | "assetId"> };
 export type MagazineChanges = {
   pages: { position: number; page: StoredPage }[];
@@ -49,6 +49,7 @@ export interface Repository {
   authorUsesPhoto(id: string): Promise<boolean>;
   authorPhotoIsPublished(id: string): Promise<boolean>;
   updateAuthor(author: Author): Promise<void>;
+  deleteAuthor(id: string): Promise<void>;
   saveMagazine(state: MagazineState, changes: MagazineChanges): Promise<void>;
   setPagePositions(pages: { id: string; position: number }[]): Promise<void>;
   deletePage(id: string): Promise<void>;
@@ -73,6 +74,7 @@ export interface Repository {
   addSession(session: Session, now: number): Promise<void>;
   removeSession(token: string): Promise<void>;
   listMedia(): Promise<MediaAsset[]>;
+  mediaByIds(ids: string[]): Promise<MediaAsset[]>;
   media(id: string): Promise<MediaAsset | undefined>;
   addMedia(asset: MediaAsset): Promise<void>;
   assignMediaContributor(id: string, contributorId: string): Promise<void>;
@@ -87,6 +89,7 @@ export interface Repository {
   mediaIsPublished(id: string): Promise<boolean>;
   countRecentContacts(since: number, email?: string): Promise<number>;
   addContact(message: ContactMessage): Promise<void>;
+  deleteContact(id: string): Promise<void>;
   listContacts(offset: number, limit: number): Promise<ContactMessage[]>;
 }
 

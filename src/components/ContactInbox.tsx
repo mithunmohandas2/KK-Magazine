@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import type { ContactMessage } from '@/lib/data';
+import { useSuccessToast } from './ToastProvider';
 
 type Inbox = { messages: ContactMessage[]; hasMore: boolean };
 
@@ -10,6 +12,11 @@ export default function ContactInbox() {
   const [data, setData] = useState<Inbox | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [candidate, setCandidate] = useState<ContactMessage | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const notify = useSuccessToast();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -22,7 +29,7 @@ export default function ContactInbox() {
         }
         const result = await response.json();
         if (!response.ok) throw new Error(result.error);
-        setData(result);
+        if (!controller.signal.aborted) setData(result);
       } catch (error) {
         if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Could not load reader messages.');
       }
@@ -30,6 +37,43 @@ export default function ContactInbox() {
     void load();
     return () => controller.abort();
   }, [page, attempt]);
+
+  useEffect(() => {
+    if (candidate && !dialog.current?.open) dialog.current?.showModal();
+  }, [candidate]);
+
+  async function confirmDelete() {
+    if (!candidate || !data || deleting) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const response = await fetch(
+        `/api/contact?id=${encodeURIComponent(candidate.id)}`,
+        { method: 'DELETE', headers: { 'X-KK-Request': '1' } },
+      );
+      if (response.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || 'Could not delete the message.');
+      }
+      dialog.current?.close();
+      setCandidate(null);
+      if (page > 0 && data.messages.length === 1 && !data.hasMore) {
+        goTo(page - 1);
+      } else {
+        setData(null);
+        setAttempt((current) => current + 1);
+      }
+      notify('Reader message deleted.');
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Could not delete the message.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function goTo(next: number) {
     setData(null);
@@ -54,11 +98,63 @@ export default function ContactInbox() {
         {new Date(message.createdAt).toLocaleString()}
       </time>
       <p>{message.message}</p>
-      <div><a className="btn" href={`mailto:${encodeURIComponent(message.email)}`}>Reply by email</a></div>
+      <div className="button-row">
+        <a className="btn" href={`mailto:${encodeURIComponent(message.email)}`}>Reply by email</a>
+        <button
+          type="button"
+          className="btn delete-action"
+          aria-haspopup="dialog"
+          aria-label={`Delete message from ${message.name}`}
+          onClick={() => {
+            setDeleteError('');
+            setCandidate(message);
+          }}
+        >
+          <Trash2 size={16} aria-hidden="true" /> Delete
+        </button>
+      </div>
     </article>)}
     {(page > 0 || data.hasMore) && <div className="button-row">
       <button className="btn" type="button" disabled={page === 0} onClick={() => goTo(page - 1)}>Newer messages</button>
       <button className="btn" type="button" disabled={!data.hasMore} onClick={() => goTo(page + 1)}>Older messages</button>
     </div>}
+    {candidate && (
+      <dialog
+        ref={dialog}
+        className="studio-delete-dialog panel"
+        aria-labelledby="delete-message-title"
+        aria-describedby="delete-message-description"
+        onClose={() => setCandidate(null)}
+        onCancel={(event) => {
+          if (deleting) event.preventDefault();
+        }}
+      >
+        <div className="stack">
+          <h2 id="delete-message-title" className="serif">Delete reader message?</h2>
+          <p id="delete-message-description">
+            Permanently delete the message from <strong>{candidate.name}</strong>?
+          </p>
+          {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
+          <div className="button-row studio-delete-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={deleting}
+              onClick={() => dialog.current?.close()}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn danger"
+              disabled={deleting}
+              onClick={confirmDelete}
+            >
+              {deleting ? 'Deleting…' : 'Delete message'}
+            </button>
+          </div>
+        </div>
+      </dialog>
+    )}
   </div>;
 }

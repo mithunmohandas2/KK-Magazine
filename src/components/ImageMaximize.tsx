@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2 } from "lucide-react";
 import FullScreenImage from "./FullScreenImage";
@@ -8,9 +8,13 @@ import FullScreenImage from "./FullScreenImage";
 export default function ImageMaximize({
   src,
   description,
+  className = "content-image-maximize",
+  children,
 }: {
   src: string;
   description: string;
+  className?: string;
+  children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -18,13 +22,13 @@ export default function ImageMaximize({
     <>
       <button
         type="button"
-        className="content-image-maximize"
+        className={className}
         title="Fullscreen"
         aria-label={`View ${description} fullscreen`}
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
       >
-        <Maximize2 size={17} aria-hidden="true" />
+        {children ?? <Maximize2 size={17} aria-hidden="true" />}
       </button>
       {open &&
         createPortal(

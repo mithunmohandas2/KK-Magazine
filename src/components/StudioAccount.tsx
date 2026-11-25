@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LogOut, UserRound, X } from "lucide-react";
 import dynamic from "next/dynamic";
-import { mediaUrl, type User } from "@/lib/data";
+import { mediaUrl, nameInitial, type User } from "@/lib/data";
 import ResponsiveImage from "./ResponsiveImage";
 
 const ProfileDialog = dynamic(() => import("./ProfileDialog"));
@@ -26,8 +26,6 @@ export default function StudioAccount({
   const [failedPhoto, setFailedPhoto] = useState<string>();
   const account = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const firstLetter = user.name.match(/\p{L}/u)?.[0] ?? "?";
-  const initial = Array.from(firstLetter.toUpperCase())[0];
   const photo = user.profile?.photoAssetId
     ? mediaUrl(user.profile.photoAssetId)
     : user.profile?.photo;
@@ -40,7 +38,7 @@ export default function StudioAccount({
         onError={() => setFailedPhoto(photo)}
       />
     ) : (
-      initial
+      nameInitial(user.name)
     );
 
   function dismiss() {

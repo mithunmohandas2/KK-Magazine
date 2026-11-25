@@ -1,6 +1,7 @@
 export type Author = {
   id: string;
   name: string;
+  nameMalayalam?: string;
   role: string;
   bio: string;
   photo: string;
@@ -8,6 +9,18 @@ export type Author = {
   email?: string;
   accountId?: string;
 };
+export const contributorNameLanguages = ["en", "ml"] as const;
+export type ContributorNameLanguage = (typeof contributorNameLanguages)[number];
+
+export function contributorName(
+  { name, nameMalayalam }: Pick<Author, "name" | "nameMalayalam">,
+  language: ContributorNameLanguage = "en",
+) {
+  const english = name?.trim() ?? "";
+  const malayalam = nameMalayalam?.trim() ?? "";
+  return language === "ml" ? malayalam || english : english || malayalam;
+}
+
 export type Block = {
   id: string;
   type: "heading" | "paragraph" | "image" | "video" | "quote";
@@ -36,6 +49,11 @@ export function mediaUrl(id: string) {
   return `/api/media/${encodeURIComponent(id)}`;
 }
 
+export function nameInitial(name: string) {
+  const letter = name.match(/\p{L}\p{M}*/u)?.[0];
+  return letter?.toUpperCase().match(/^\p{L}\p{M}*/u)?.[0] ?? "?";
+}
+
 export function blockSource({ assetId, src }: Pick<Block, "assetId" | "src">) {
   return assetId ? mediaUrl(assetId) : src;
 }
@@ -51,6 +69,11 @@ export type PageContent = {
   title: string;
   template: (typeof templates)[number];
   authors: string[];
+  contributorNameLanguage?: ContributorNameLanguage;
+  backgroundColor?: string;
+  backgroundImage?: Pick<Block, "src" | "assetId">;
+  textColor?: string;
+  backgroundClass?: string;
   blocks: Block[];
 };
 export type PageStatus = "Draft" | "In review" | "Approved" | "Published";
@@ -67,10 +90,11 @@ export type ReaderPageSummary = Pick<PageContent, "id" | "title"> & {
 export type ReaderMagazine = Pick<Magazine, "title" | "cover"> & {
   pages: ReaderPageSummary[];
 };
+type AuthorThumbnail = { photoThumbnail?: string };
 export type ReaderAuthor = Pick<
   Author,
-  "id" | "name" | "role" | "photo" | "photoAssetId"
->;
+  "id" | "name" | "nameMalayalam" | "role" | "photo" | "photoAssetId"
+> & AuthorThumbnail;
 export type ReaderPage = {
   page: PageContent;
   authors: ReaderAuthor[];
@@ -122,7 +146,7 @@ export const permissions = {
 export type Workspace = {
   user: User;
   pages: EditorialPage[];
-  authors: Author[];
+  authors: (Author & AuthorThumbnail)[];
   users: User[];
   browserDraftsImported: boolean;
   media: MediaAsset[];

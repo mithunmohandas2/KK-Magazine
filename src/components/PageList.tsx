@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import {
   closestCenter,
   DndContext,
@@ -18,16 +18,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Eye, GripVertical, Lock } from "lucide-react";
-import type { WorkspaceCommand } from "@/lib/commands";
+import { Eye, GripVertical, Lock, Pencil } from "lucide-react";
 import type { EditorialPage } from "@/lib/data";
 
-type MovePage = Extract<WorkspaceCommand, { action: "movePage" }>;
+type PageAction = "Edit" | "Open" | "Review";
 
 function PageRow({
   page,
   busy,
-  showHandle,
+  reordering,
   fixed,
   action,
   onOpen,
@@ -35,13 +34,13 @@ function PageRow({
 }: {
   page: EditorialPage;
   busy: boolean;
-  showHandle: boolean;
+  reordering: boolean;
   fixed: boolean;
-  action: string;
+  action: PageAction;
   onOpen: (id: string) => void;
   onPreview?: (page: EditorialPage) => void;
 }) {
-  const disabled = !showHandle || fixed || busy;
+  const disabled = !reordering || fixed || busy;
   const {
     attributes,
     listeners,
@@ -57,7 +56,7 @@ function PageRow({
   return (
     <div
       ref={setNodeRef}
-      className={showHandle ? "record page-record" : "record"}
+      className={reordering ? "record page-record" : "record"}
       data-page-status={page.status}
       data-dragging={isDragging || undefined}
       style={{
@@ -67,7 +66,7 @@ function PageRow({
         transition,
       }}
     >
-      {showHandle &&
+      {reordering &&
         (fixed ? (
           <span className="page-order-handle" title="Cover stays first">
             <Lock size={17} role="img" aria-label="Cover stays first" />
@@ -90,18 +89,33 @@ function PageRow({
         <div className="muted record-detail">{page.template}</div>
       </div>
       <span className="pill">{page.status}</span>
-      <div className="page-list-actions">
-        {onPreview && (
-          <button type="button" className="btn" aria-haspopup="dialog"
-            aria-label={`Preview ${page.title}`} disabled={busy} onClick={() => onPreview(page)}>
-            <Eye size={16} aria-hidden="true" />
-            Preview
+      {!reordering && (
+        <div className="page-list-actions">
+          {onPreview && (
+            <button
+              type="button"
+              className="btn icon-button"
+              title="Preview"
+              aria-haspopup="dialog"
+              aria-label={`Preview ${page.title}`}
+              disabled={busy}
+              onClick={() => onPreview(page)}
+            >
+              <Eye size={16} aria-hidden="true" />
+            </button>
+          )}
+          <button
+            type="button"
+            className={action === "Edit" ? "btn icon-button" : "btn"}
+            title={action === "Edit" ? "Edit" : undefined}
+            aria-label={action === "Edit" ? `Edit ${page.title}` : undefined}
+            disabled={busy}
+            onClick={() => onOpen(page.id)}
+          >
+            {action === "Edit" ? <Pencil size={16} aria-hidden="true" /> : action}
           </button>
-        )}
-        <button type="button" className="btn" disabled={busy} onClick={() => onOpen(page.id)}>
-          {action}
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -110,27 +124,24 @@ export default function PageList({
   pages,
   coverId,
   busy,
-  canReorder,
+  reordering,
   action,
   empty,
   onOpen,
   onPreview,
-  onMove,
+  onReorder,
 }: {
   pages: EditorialPage[];
   coverId?: string;
   busy: boolean;
-  canReorder: boolean;
-  action: string;
+  reordering: boolean;
+  action: PageAction;
   empty: string;
   onOpen: (id: string) => void;
   onPreview?: (page: EditorialPage) => void;
-  onMove: (command: MovePage) => Promise<unknown>;
+  onReorder: (order: string[]) => void;
 }) {
   const contextId = useId();
-  const [pending, setPending] = useState<EditorialPage[] | null>(null);
-  const items = pending ?? pages;
-  const showHandle = canReorder && items.length - Number(Boolean(coverId)) > 1;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, {
@@ -138,27 +149,24 @@ export default function PageList({
     }),
   );
 
-  async function move({ active, over }: DragEndEvent) {
-    if (!showHandle || busy || pending || !over || active.id === over.id)
+  function move({ active, over }: DragEndEvent) {
+    if (
+      !reordering ||
+      busy ||
+      !over ||
+      active.id === over.id ||
+      active.id === coverId ||
+      over.id === coverId
+    )
       return;
-    const from = items.findIndex((page) => page.id === active.id);
-    const to = items.findIndex((page) => page.id === over.id);
+    const from = pages.findIndex((page) => page.id === active.id);
+    const to = pages.findIndex((page) => page.id === over.id);
     if (from < 0 || to < 0) return;
-    setPending(arrayMove(items, from, to));
-    try {
-      await onMove({
-        action: "movePage",
-        id: items[from].id,
-        targetId: items[to].id,
-        placement: from < to ? "after" : "before",
-      });
-    } finally {
-      setPending(null);
-    }
+    onReorder(arrayMove(pages, from, to).map((page) => page.id));
   }
 
   const title = (id: string | number) =>
-    items.find((page) => page.id === id)?.title ?? "Page";
+    pages.find((page) => page.id === id)?.title ?? "Page";
   return (
     <div className="panel record-list">
       <DndContext
@@ -183,15 +191,17 @@ export default function PageList({
         }}
       >
         <SortableContext
-          items={items.map((page) => page.id)}
+          items={pages
+            .filter((page) => page.id !== coverId)
+            .map((page) => page.id)}
           strategy={verticalListSortingStrategy}
         >
-          {items.map((page, index) => (
+          {pages.map((page) => (
             <PageRow
-              key={page.id + index}
+              key={page.id}
               page={page}
               busy={busy}
-              showHandle={showHandle}
+              reordering={reordering}
               fixed={page.id === coverId}
               action={action}
               onOpen={onOpen}
@@ -200,7 +210,7 @@ export default function PageList({
           ))}
         </SortableContext>
       </DndContext>
-      {!items.length && <p className="empty-state">{empty}</p>}
+      {!pages.length && <p className="empty-state">{empty}</p>}
     </div>
   );
 }

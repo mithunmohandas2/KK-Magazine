@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Maximize2, Pencil, X } from "lucide-react";
+import { Maximize2, Pencil, Trash2, X } from "lucide-react";
 import {
+  contributorName,
   mediaUrl,
   minimumPasswordLength,
   type Author,
   type User,
+  type Workspace,
 } from "@/lib/data";
 import MediaUpload from "./MediaUpload";
 import FullScreenImage, { type ImagePreview } from "./FullScreenImage";
+import PersonAvatar from "./PersonAvatar";
 import ResponsiveImage from "./ResponsiveImage";
 
 type SaveContributor = (
@@ -51,7 +54,7 @@ function ContributorForm({
       "",
   );
   const [resetPassword, setResetPassword] = useState(false);
-  const [passwordError, setPasswordError] = useState("");
+  const [formError, setFormError] = useState("");
   const photoSource = photoId
     ? mediaUrl(photoId)
     : /^https?:\/\//i.test(photoUrl)
@@ -67,6 +70,12 @@ function ContributorForm({
     event.preventDefault();
     if (busy) return;
     const fields = new FormData(event.currentTarget);
+    const name = String(fields.get("name") ?? "").trim();
+    const nameMalayalam = String(fields.get("nameMalayalam") ?? "").trim();
+    if (!name && !nameMalayalam) {
+      setFormError("Enter a name in English or Malayalam.");
+      return;
+    }
     const newPassword = resetPassword
       ? String(fields.get("newPassword") ?? "")
       : undefined;
@@ -74,14 +83,15 @@ function ContributorForm({
       newPassword !== undefined &&
       newPassword !== fields.get("confirmPassword")
     ) {
-      setPasswordError("The new passwords do not match.");
+      setFormError("The new passwords do not match.");
       return;
     }
-    setPasswordError("");
+    setFormError("");
     const saved = await onSave(
       contributorId,
       {
-        name: String(fields.get("name")),
+        name,
+        nameMalayalam,
         role: String(fields.get("role")),
         bio: String(fields.get("bio")),
         photo: photoId ? "" : photoUrl.trim(),
@@ -120,17 +130,27 @@ function ContributorForm({
           </button>
         </div>
         <label>
-          Name
+          Name in English
           <input
             name="name"
             className="field"
             defaultValue={author?.name}
-            required
             maxLength={200}
             disabled={busy}
           />
         </label>
         <label>
+          Name in Malayalam
+          <input
+            name="nameMalayalam"
+            className="field"
+            lang="ml"
+            defaultValue={author?.nameMalayalam}
+            maxLength={200}
+            disabled={busy}
+          />
+        </label>
+        <label className={accounts ? undefined : "form-wide"}>
           Credit
           <input
             name="role"
@@ -155,109 +175,113 @@ function ContributorForm({
             />
           </label>
         )}
-        {author && accounts && (
-          <label>
-            Linked login
-            <select
-              className="field"
-              value={accountId}
-              disabled={busy}
-              onChange={(event) => {
-                const account = accounts.find(
-                  (account) => account.id === event.target.value,
-                );
-                setAccountId(account?.id ?? "");
-                if (account) setEmail(account.email);
-                setResetPassword(false);
-                setPasswordError("");
-              }}
-            >
-              <option value="">No login linked</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name} ({account.email})
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {accountId && (
-          <p className="form-wide muted text-sm">
-            Name and email changes also update the linked login.
-          </p>
-        )}
-        <fieldset className="stack contributor-photo-fields" disabled={busy}>
-          <legend>Contributor photo</legend>
-          {!photoId && (
-            <label>
-              Photo URL
-              <input
-                className="field"
-                type="url"
-                maxLength={2048}
-                value={photoUrl}
-                onChange={(event) => setPhotoUrl(event.target.value)}
-              />
-            </label>
-          )}
-          {photoSource && (
-            <>
-              <ResponsiveImage
-                className="contributor-photo-preview"
-                src={photoSource}
-                alt="Selected contributor photo"
-                sizes="192px"
-              />
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    onPreview({
-                      src: photoSource,
-                      description: "Selected contributor photo",
-                    })
-                  }
-                >
-                  <Maximize2 size={16} aria-hidden="true" /> Full-screen preview
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    setPhotoId(undefined);
-                    setPhotoUrl("");
+        <div className="form-wide form-grid">
+          <div className="stack contributor-detail-fields">
+            {author && accounts && (
+              <label>
+                Linked login
+                <select
+                  className="field"
+                  value={accountId}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const account = accounts.find(
+                      (account) => account.id === event.target.value,
+                    );
+                    setAccountId(account?.id ?? "");
+                    if (account) setEmail(account.email);
+                    setResetPassword(false);
+                    setFormError("");
                   }}
                 >
-                  Remove photo
-                </button>
-              </div>
-            </>
-          )}
-          {uploadsEnabled && (
-            <MediaUpload
-              purpose="contributor"
-              contributorId={contributorId}
-              busy={busy}
-              onBusyChange={onBusyChange}
-              onUploaded={(asset) => {
-                setPhotoId(asset.id);
-                setPhotoUrl("");
-              }}
-            />
-          )}
-        </fieldset>
-        <label className="contributor-bio">
-          Bio
-          <textarea
-            name="bio"
-            className="field"
-            defaultValue={author?.bio}
-            rows={5}
-            maxLength={2000}
-            disabled={busy}
-          />
-        </label>
+                  <option value="">No login linked</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} ({account.email})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {accountId && (
+              <p className="muted text-sm">
+                Name and email changes also update the linked login.
+              </p>
+            )}
+            <label className="contributor-bio">
+              Bio
+              <textarea
+                name="bio"
+                className="field"
+                defaultValue={author?.bio}
+                rows={5}
+                maxLength={2000}
+                disabled={busy}
+              />
+            </label>
+          </div>
+          <fieldset className="stack contributor-photo-fields" disabled={busy}>
+            <legend>Contributor photo</legend>
+            {!photoId && (
+              <label>
+                Photo URL
+                <input
+                  className="field"
+                  type="url"
+                  maxLength={2048}
+                  value={photoUrl}
+                  onChange={(event) => setPhotoUrl(event.target.value)}
+                />
+              </label>
+            )}
+            {photoSource && (
+              <>
+                <ResponsiveImage
+                  className="contributor-photo-preview"
+                  src={photoSource}
+                  alt="Selected contributor photo"
+                  sizes="192px"
+                />
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() =>
+                      onPreview({
+                        src: photoSource,
+                        description: "Selected contributor photo",
+                      })
+                    }
+                  >
+                    <Maximize2 size={16} aria-hidden="true" /> Full-screen preview
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setPhotoId(undefined);
+                      setPhotoUrl("");
+                    }}
+                  >
+                    Remove photo
+                  </button>
+                </div>
+              </>
+            )}
+            {uploadsEnabled && (
+              <MediaUpload
+                purpose="contributor"
+                contributorId={contributorId}
+                busy={busy}
+                onBusyChange={onBusyChange}
+                onUploaded={(asset) => {
+                  setPhotoId(asset.id);
+                  setPhotoUrl("");
+                }}
+              />
+            )}
+          </fieldset>
+        </div>
         {accountId && (
           <fieldset className="form-wide stack" disabled={busy}>
             <label className="check-label">
@@ -266,7 +290,7 @@ function ContributorForm({
                 checked={resetPassword}
                 onChange={(event) => {
                   setResetPassword(event.target.checked);
-                  setPasswordError("");
+                  setFormError("");
                 }}
               />{" "}
               Reset password
@@ -305,9 +329,9 @@ function ContributorForm({
             )}
           </fieldset>
         )}
-        {(passwordError || error) && (
+        {(formError || error) && (
           <p className="form-wide form-error" role="alert">
-            {passwordError || error}
+            {formError || error}
           </p>
         )}
         <div className="form-wide button-row studio-delete-actions">
@@ -330,6 +354,7 @@ function ContributorForm({
 
 export default function Contributors({
   authors,
+  search,
   form,
   accounts,
   busy,
@@ -337,10 +362,12 @@ export default function Contributors({
   error,
   onBusyChange,
   onEdit,
+  onDelete,
   onSave,
   onClose,
 }: {
-  authors: Author[];
+  authors: Workspace["authors"];
+  search: string;
   form: Author | "new" | null;
   accounts?: User[];
   busy: boolean;
@@ -348,6 +375,7 @@ export default function Contributors({
   error: string;
   onBusyChange: (busy: boolean) => void;
   onEdit: (author: Author) => void;
+  onDelete: (author: Author) => void;
   onSave: SaveContributor;
   onClose: () => void;
 }) {
@@ -358,29 +386,34 @@ export default function Contributors({
       .filter((item) => item.id !== author?.id)
       .map((item) => item.accountId),
   );
+  const visibleAuthors = search
+    ? authors.filter(({ name, nameMalayalam, role, email }) =>
+        [name, nameMalayalam, role, accounts ? email : undefined].some((value) =>
+          value?.normalize().toLowerCase().includes(search),
+        ),
+      )
+    : authors;
   return (
     <>
       <div className="panel record-list">
-        {authors.map((author) => {
+        {visibleAuthors.map((author) => {
           const src = author.photoAssetId
             ? mediaUrl(author.photoAssetId)
             : author.photo;
-          const description = `Photo of ${author.name}`;
+          const name = contributorName(author);
+          const description = `Photo of ${name}`;
           return (
             <div className="record contributor-record" key={author.id}>
-              <div className="contributor">
-                {src && (
-                  <button
-                    type="button"
-                    className="contributor-photo-button"
-                    aria-label={`View photo of ${author.name} full-screen`}
-                    onClick={() => setPreview({ src, description })}
-                  >
-                    <ResponsiveImage src={src} alt="" sizes="48px" />
-                  </button>
-                )}
+              <div className="person-summary">
+                <PersonAvatar
+                  name={name}
+                  src={author.photoThumbnail || src}
+                  onPreview={
+                    src ? () => setPreview({ src, description }) : undefined
+                  }
+                />
                 <div>
-                  <strong>{author.name}</strong>
+                  <strong>{name}</strong>
                   <div className="muted">{author.role}</div>
                   {accounts && author.email && (
                     <div className="muted">{author.email}</div>
@@ -393,22 +426,38 @@ export default function Contributors({
                 </div>
               </div>
               {accounts && (
-                <button
-                  type="button"
-                  className="btn"
-                  aria-label={`Edit contributor ${author.name}`}
-                  aria-haspopup="dialog"
-                  disabled={busy}
-                  onClick={() => onEdit(author)}
-                >
-                  <Pencil size={15} aria-hidden="true" /> Edit
-                </button>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="btn icon-button"
+                    title="Edit"
+                    aria-label={`Edit contributor ${name}`}
+                    aria-haspopup="dialog"
+                    disabled={busy}
+                    onClick={() => onEdit(author)}
+                  >
+                    <Pencil size={16} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn icon-button delete-action"
+                    title="Delete"
+                    aria-label={`Delete contributor ${name}`}
+                    aria-haspopup="dialog"
+                    disabled={busy}
+                    onClick={() => onDelete(author)}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                </div>
               )}
             </div>
           );
         })}
-        {!authors.length && (
-          <p className="empty-state">No contributors added.</p>
+        {!visibleAuthors.length && (
+          <p className="empty-state" role="status">
+            {search ? "No contributors match your search." : "No contributors added."}
+          </p>
         )}
       </div>
       {form && (
