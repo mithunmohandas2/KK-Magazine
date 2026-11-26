@@ -5,7 +5,7 @@ import {
   initialState,
   publicUser,
   type Account,
-  type PublishedPageSummary,
+  type PageIndexEntry,
   type Repository,
   type Revision,
   type StoredPage,
@@ -175,21 +175,26 @@ function repository(
         imported: metadata?.imported,
       };
     },
-    async publishedIndex() {
+    async pageIndex(edition) {
+      const preview = edition === "preview";
+      const path = preview ? "$page" : "$page.published";
       return data.pages
-        .aggregate<PublishedPageSummary>(
+        .aggregate<PageIndexEntry>(
           [
-            { $match: { "page.published": { $exists: true } } },
+            ...(preview ? [] : [{ $match: { "page.published": { $exists: true } } }]),
             { $sort: { position: 1 } },
             {
               $project: {
                 _id: 0,
-                id: "$page.published.id",
-                title: "$page.published.title",
-                template: "$page.published.template",
-                backgroundColor: "$page.published.backgroundColor",
-                backgroundImage: "$page.published.backgroundImage",
-                backgroundClass: "$page.published.backgroundClass",
+                id: `${path}.id`,
+                title: `${path}.title`,
+                template: `${path}.template`,
+                authors: { $ifNull: [`${path}.authors`, []] },
+                contributorNameLanguage: `${path}.contributorNameLanguage`,
+                backgroundColor: `${path}.backgroundColor`,
+                backgroundImage: `${path}.backgroundImage`,
+                backgroundClass: `${path}.backgroundClass`,
+                ...(preview ? { status: "$page.status" } : {}),
                 image: {
                   $let: {
                     vars: {
@@ -197,7 +202,7 @@ function repository(
                         $arrayElemAt: [
                           {
                             $filter: {
-                              input: "$page.published.blocks",
+                              input: `${path}.blocks`,
                               as: "block",
                               cond: {
                                 $and: [
@@ -250,6 +255,13 @@ function repository(
         .project<{ page: { published: PageContent } }>({ "page.published": 1 })
         .next();
       return row?.page.published;
+    },
+    async editorialPage(id) {
+      const row = await data.pages.findOne(
+        { _id: id },
+        { ...options, projection: { "page.published": 0, "page.reviewNote": 0 } },
+      );
+      return row?.page;
     },
     authors,
     authorUsesPhoto,

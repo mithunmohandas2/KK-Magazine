@@ -23,6 +23,7 @@ import {
   defaultCoverHeading,
   initialMagazine,
   magazineCoverId,
+  pageContributorNames,
   permissions,
   type Author,
   type ContactMessage,
@@ -71,48 +72,84 @@ function withCurrentCoverHeading<T extends PageContent>(page: T): T {
 }
 
 export function publicMagazine() {
+  return access(false, (db) => readMagazine(db, "public"));
+}
+
+export function previewMagazine(token?: string) {
   return access(false, async (db) => {
-    const [index, first] = await Promise.all([
-      db.publishedIndex(),
-      db.publishedPage(),
-    ]);
-    const { title, cover } = initialMagazine;
-    const magazine: ReaderMagazine = {
-      title,
-      cover,
-      pages: index.map(
-        ({ id, title, template, image, backgroundColor, backgroundImage, backgroundClass }) => {
-          const thumbnail = image && blockSource(image);
-          const backdrop = backgroundImage && blockSource(backgroundImage);
-          return {
-            id,
-            title,
-            thumbnail:
-              template === "Cover"
-              ? backdrop || (backgroundColor || backgroundClass ? undefined : thumbnail || cover)
-                : thumbnail || backdrop,
-          };
-        },
-      ),
-    };
-    const firstId = index[0]?.id;
-    const page =
-      firstId &&
-      (first?.id === firstId ? first : await db.publishedPage(firstId));
-    return { magazine, initialPage: page ? await readerPage(db, page) : null };
+    await requirePreviewAdmin(db, token);
+    return readMagazine(db, "preview");
   });
+}
+
+async function requirePreviewAdmin(db: Repository, token?: string) {
+  const user = await findSession(token, db);
+  if (!user) throw new RequestError(401, "Log in to preview the magazine.");
+  requirePermission(permissions.manageUsers(user.role));
+}
+
+async function readMagazine(db: Repository, edition: "public" | "preview") {
+  const preview = edition === "preview";
+  const [index, first] = await Promise.all([
+    db.pageIndex(edition),
+    preview ? undefined : db.publishedPage(),
+  ]);
+  const firstId = index[0]?.id;
+  let page: PageContent | undefined;
+  if (firstId) {
+    page = preview
+      ? await db.editorialPage(firstId)
+      : first?.id === firstId
+        ? first
+        : await db.publishedPage(firstId);
+  }
+  const authorIds = new Set(index.flatMap(({ authors }) => authors));
+  if (page) for (const id of page.authors) authorIds.add(id);
+  const authors = authorIds.size ? await db.authors([...authorIds]) : [];
+  const authorsById = new Map(authors.map((author) => [author.id, author]));
+  const { title, cover } = initialMagazine;
+  const magazine: ReaderMagazine = {
+    title,
+    cover,
+    pages: index.map((summary) => {
+      const { id, title, template, image, backgroundColor, backgroundImage, backgroundClass } = summary;
+      const thumbnail = image && blockSource(image);
+      const backdrop = backgroundImage && blockSource(backgroundImage);
+      return {
+        id,
+        title,
+        ...(preview && { status: summary.status }),
+        authorNames: pageContributorNames(summary, authorsById) || undefined,
+        thumbnail:
+          template === "Cover"
+            ? backdrop || (backgroundColor || backgroundClass ? undefined : thumbnail || cover)
+            : thumbnail || backdrop,
+      };
+    }),
+  };
+  const initialPage = page
+    ? await readerPage(db, preview ? pageContent(page) : page, {
+        authors: authors.filter(({ id }) => page?.authors.includes(id)),
+        publicThumbnails: !preview,
+      })
+    : null;
+  return { magazine, initialPage };
 }
 
 async function readerPage(
   db: Repository,
   page: PageContent,
+  { authors, publicThumbnails = true }: {
+    authors?: Author[];
+    publicThumbnails?: boolean;
+  } = {},
 ): Promise<ReaderPage> {
-  const authors = page.authors.length ? await db.authors(page.authors) : [];
+  authors ??= page.authors.length ? await db.authors(page.authors) : [];
   const photoIds = authors
     .map(({ photoAssetId }) => photoAssetId)
     .filter((id) => id !== undefined);
   const photos =
-    photoIds.length && cloudinaryConfigured()
+    publicThumbnails && photoIds.length && cloudinaryConfigured()
       ? await db.mediaByIds(photoIds)
       : [];
   const thumbnails = authorThumbnails(photos);
@@ -145,6 +182,16 @@ export function publicReaderPage(id: string) {
   return access(false, async (db) => {
     const page = await db.publishedPage(id);
     return page ? readerPage(db, page) : null;
+  });
+}
+
+export function previewReaderPage(token: string | undefined, id: string) {
+  return access(false, async (db) => {
+    await requirePreviewAdmin(db, token);
+    const page = await db.editorialPage(id);
+    return page
+      ? readerPage(db, pageContent(page), { publicThumbnails: false })
+      : null;
   });
 }
 

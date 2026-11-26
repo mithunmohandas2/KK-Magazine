@@ -19,12 +19,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Eye, GripVertical, Lock, Pencil } from "lucide-react";
-import type { EditorialPage } from "@/lib/data";
+import { pageContributorNames, type Author, type EditorialPage } from "@/lib/data";
 
 type PageAction = "Edit" | "Open" | "Review";
 
 function PageRow({
   page,
+  authorNames,
   busy,
   reordering,
   fixed,
@@ -33,6 +34,7 @@ function PageRow({
   onPreview,
 }: {
   page: EditorialPage;
+  authorNames: string;
   busy: boolean;
   reordering: boolean;
   fixed: boolean;
@@ -56,7 +58,13 @@ function PageRow({
   return (
     <div
       ref={setNodeRef}
-      className={reordering ? "record page-record" : "record"}
+      className={
+        reordering
+          ? "record page-record"
+          : action === "Edit"
+            ? "record magazine-page-record"
+            : "record"
+      }
       data-page-status={page.status}
       data-dragging={isDragging || undefined}
       style={{
@@ -84,9 +92,18 @@ function PageRow({
             <GripVertical size={20} aria-hidden="true" />
           </button>
         ))}
-      <div>
-        <strong>{page.title}</strong>
-        <div className="muted record-detail">{page.template}</div>
+      <div className="page-list-summary">
+        <strong className="page-list-title" title={page.title}>
+          {page.title}
+        </strong>
+        <div className="page-list-metadata">
+          <div className="muted record-detail">{page.template}</div>
+          {authorNames && (
+            <em className="muted record-detail page-list-authors">
+              {authorNames}
+            </em>
+          )}
+        </div>
       </div>
       <span className="pill">{page.status}</span>
       {!reordering && (
@@ -122,6 +139,7 @@ function PageRow({
 
 export default function PageList({
   pages,
+  authors,
   coverId,
   busy,
   reordering,
@@ -132,6 +150,7 @@ export default function PageList({
   onReorder,
 }: {
   pages: EditorialPage[];
+  authors: Author[];
   coverId?: string;
   busy: boolean;
   reordering: boolean;
@@ -142,6 +161,7 @@ export default function PageList({
   onReorder: (order: string[]) => void;
 }) {
   const contextId = useId();
+  const authorsById = new Map(authors.map((author) => [author.id, author]));
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, {
@@ -200,6 +220,7 @@ export default function PageList({
             <PageRow
               key={page.id}
               page={page}
+              authorNames={pageContributorNames(page, authorsById)}
               busy={busy}
               reordering={reordering}
               fixed={page.id === coverId}

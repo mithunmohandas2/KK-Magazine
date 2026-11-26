@@ -16,6 +16,7 @@ import {
   ArrowUp,
   BookOpen,
   Check,
+  Eye,
   FileText,
   Images,
   Mail,
@@ -48,7 +49,10 @@ import {
 } from "@/lib/data";
 import type { Transition, WorkspaceCommand } from "@/lib/commands";
 import { pageContent } from "@/lib/page-transfer";
-import { backgroundClassTokens, isBackgroundClass } from "@/lib/page-background";
+import {
+  backgroundClassTokens,
+  isBackgroundClass,
+} from "@/lib/page-background";
 import ContributorPicker from "./ContributorPicker";
 import MagazinePage from "./MagazinePage";
 import FullScreenImage, { type ImagePreview } from "./FullScreenImage";
@@ -284,7 +288,13 @@ function NewUserDialog({
         </div>
         <label>
           Name
-          <input className="field" name="name" required maxLength={200} disabled={busy} />
+          <input
+            className="field"
+            name="name"
+            required
+            maxLength={200}
+            disabled={busy}
+          />
         </label>
         <label>
           Email
@@ -375,8 +385,9 @@ function PageEditor({
     null,
   );
   const contributorLanguage = draft.contributorNameLanguage ?? "en";
-  const unsupportedBackgroundClass = backgroundClassTokens(draft.backgroundClass)
-    .find((token) => !isBackgroundClass(token));
+  const unsupportedBackgroundClass = backgroundClassTokens(
+    draft.backgroundClass,
+  ).find((token) => !isBackgroundClass(token));
   const canEdit = permissions.editPage(role, isCover);
   const editable = page.status === "Draft" && canEdit;
   const dirty = JSON.stringify(draft) !== JSON.stringify(pageContent(page));
@@ -493,7 +504,9 @@ function PageEditor({
     );
   }
 
-  function updateBackgroundImage(change: NonNullable<PageContent["backgroundImage"]>) {
+  function updateBackgroundImage(
+    change: NonNullable<PageContent["backgroundImage"]>,
+  ) {
     setDraft((current) => {
       const image = { ...current.backgroundImage, ...change };
       return {
@@ -557,7 +570,12 @@ function PageEditor({
           {editable && (
             <button
               className="btn"
-              disabled={busy || !dirty || !draft.title.trim() || Boolean(unsupportedBackgroundClass)}
+              disabled={
+                busy ||
+                !dirty ||
+                !draft.title.trim() ||
+                Boolean(unsupportedBackgroundClass)
+              }
               onClick={() =>
                 send(
                   { action: "savePage", page: draft, version: page.version },
@@ -792,7 +810,9 @@ function PageEditor({
                   authors: id
                     ? [
                         id,
-                        ...current.authors.slice(1).filter((author) => author !== id),
+                        ...current.authors
+                          .slice(1)
+                          .filter((author) => author !== id),
                       ]
                     : [],
                 }))
@@ -803,7 +823,9 @@ function PageEditor({
                 multiple
                 label="Additional contributors"
                 language={contributorLanguage}
-                options={authors.filter((author) => author.id !== draft.authors[0])}
+                options={authors.filter(
+                  (author) => author.id !== draft.authors[0],
+                )}
                 values={draft.authors.slice(1)}
                 disabled={busy}
                 onChange={(ids) =>
@@ -838,7 +860,10 @@ function PageEditor({
                   type="button"
                   className="btn"
                   onClick={() =>
-                    setDraft((current) => ({ ...current, backgroundColor: undefined }))
+                    setDraft((current) => ({
+                      ...current,
+                      backgroundColor: undefined,
+                    }))
                   }
                 >
                   Reset color
@@ -861,7 +886,10 @@ function PageEditor({
                   type="button"
                   className="btn"
                   onClick={() =>
-                    setDraft((current) => ({ ...current, textColor: undefined }))
+                    setDraft((current) => ({
+                      ...current,
+                      textColor: undefined,
+                    }))
                   }
                 >
                   Reset text color
@@ -903,7 +931,10 @@ function PageEditor({
                       type="button"
                       className="btn"
                       onClick={() =>
-                        setDraft((current) => ({ ...current, backgroundImage: undefined }))
+                        setDraft((current) => ({
+                          ...current,
+                          backgroundImage: undefined,
+                        }))
                       }
                     >
                       Remove background image
@@ -1341,6 +1372,17 @@ export default function Studio({
         <BookOpen size={17} aria-hidden="true" />
         Read magazine
       </Link>
+      {isAdmin && (
+        <Link
+          href="/dashboard/preview"
+          className="navlink"
+          prefetch={false}
+          onClick={() => mobileDrawer.current?.close()}
+        >
+          <Eye size={17} aria-hidden="true" />
+          Magazine Admin Preview
+        </Link>
+      )}
     </>
   );
 
@@ -1410,7 +1452,8 @@ export default function Studio({
                             photo: updated.profile.photo,
                             photoAssetId: updated.profile.photoAssetId,
                             photoThumbnail:
-                              author.photoAssetId === updated.profile.photoAssetId
+                              author.photoAssetId ===
+                              updated.profile.photoAssetId
                                 ? author.photoThumbnail
                                 : undefined,
                           }
@@ -1539,9 +1582,11 @@ export default function Studio({
                           type="button"
                           className="btn"
                           onClick={startReordering}
-                          disabled={busy || pages.length - Number(Boolean(coverId)) < 2}
+                          disabled={
+                            busy || pages.length - Number(Boolean(coverId)) < 2
+                          }
                         >
-                          Reorder pages
+                          Reorder
                         </button>
                         <button
                           className="btn primary"
@@ -1549,7 +1594,7 @@ export default function Studio({
                           onClick={createPage}
                         >
                           <Plus size={17} aria-hidden="true" />
-                          New page
+                          New
                         </button>
                       </>
                     )}
@@ -1563,7 +1608,9 @@ export default function Studio({
                       aria-label={searchLabel}
                       placeholder={searchLabel}
                       value={directorySearch}
-                      onChange={(event) => setDirectorySearch(event.target.value)}
+                      onChange={(event) =>
+                        setDirectorySearch(event.target.value)
+                      }
                     />
                     {currentView === "authors" && canEdit && (
                       <button
@@ -1629,6 +1676,7 @@ export default function Studio({
                 <PageList
                   coverId={coverId}
                   pages={visiblePages}
+                  authors={authors}
                   busy={busy}
                   reordering={reordering}
                   action={
@@ -1733,7 +1781,9 @@ export default function Studio({
                       onClose={() => {
                         setShowNewUser(false);
                         setError("");
-                        requestAnimationFrame(() => addUserButton.current?.focus());
+                        requestAnimationFrame(() =>
+                          addUserButton.current?.focus(),
+                        );
                       }}
                     />
                   )}
@@ -1810,7 +1860,9 @@ export default function Studio({
                     ))}
                     {!visibleUsers.length && (
                       <p className="empty-state" role="status">
-                        {directoryQuery ? "No users match your search." : "No users added."}
+                        {directoryQuery
+                          ? "No users match your search."
+                          : "No users added."}
                       </p>
                     )}
                   </div>
@@ -1840,11 +1892,13 @@ export default function Studio({
         {deleteCandidate && (
           <div className="stack">
             <h2 className="serif" id="studio-delete-title">
-              {{
-                page: "Delete page?",
-                author: "Delete contributor?",
-                user: "Delete user account?",
-              }[deleteCandidate.kind]}
+              {
+                {
+                  page: "Delete page?",
+                  author: "Delete contributor?",
+                  user: "Delete user account?",
+                }[deleteCandidate.kind]
+              }
             </h2>
             <p id="studio-delete-description">
               {deleteCandidate.kind === "page" ? (

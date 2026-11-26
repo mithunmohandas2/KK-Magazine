@@ -36,10 +36,12 @@ export default function Reader({
   magazine,
   initialPage,
   signedIn,
+  adminPreview = false,
 }: {
   magazine: ReaderMagazine;
   initialPage: ReaderPage | null;
   signedIn: boolean;
+  adminPreview?: boolean;
 }) {
   const { pages } = magazine;
   const [index, setIndex] = useState(0);
@@ -54,6 +56,7 @@ export default function Reader({
   const [theme, setTheme] = useState<Theme>("light");
   const stage = useRef<HTMLElement>(null);
   const { method: installMethod, promptInstall } = useAppInstall();
+  const availableInstall = adminPreview ? null : installMethod;
   const page = pages[index];
   const content = page && loaded.get(page.id);
 
@@ -61,7 +64,8 @@ export default function Reader({
     const id = page?.id;
     if (!id || content) return;
     const controller = new AbortController();
-    fetch(`/api/reader/${encodeURIComponent(id)}`, {
+    const endpoint = adminPreview ? "/api/admin-preview" : "/api/reader";
+    fetch(`${endpoint}/${encodeURIComponent(id)}`, {
       signal: controller.signal,
     })
       .then((response) => {
@@ -76,7 +80,7 @@ export default function Reader({
         if (!controller.signal.aborted) setFailedId(id);
       });
     return () => controller.abort();
-  }, [page?.id, content, attempt]);
+  }, [page?.id, content, attempt, adminPreview]);
 
   function showPanel(view: PanelView | null) {
     if (view) setPanelOpened(true);
@@ -194,7 +198,10 @@ export default function Reader({
           role="group"
           aria-label="Reader actions"
         >
-          {headerActions
+          {adminPreview && (
+            <span className="reader-preview-label">Admin preview</span>
+          )}
+          {!adminPreview && headerActions
             .filter((action) => action.panel !== "share" || page)
             .map(({ panel: target, label, Icon }) => (
               <button
@@ -220,7 +227,7 @@ export default function Reader({
           >
             <ThemeIcon size={18} aria-hidden="true" />
           </button>
-          {installMethod && (
+          {availableInstall && (
             <button
               type="button"
               className="reader-header-icon"
@@ -243,6 +250,7 @@ export default function Reader({
         tabIndex={0}
         aria-label="Magazine content"
       >
+        {adminPreview && !page && <p role="status">No magazine pages yet.</p>}
         {content && (
           <div
             key={content.page.id}
@@ -285,7 +293,11 @@ export default function Reader({
           title={magazine.title}
           aria-label="Mozhi, go to cover"
         >
-          <span lang="ml">{magazine.title}</span>
+          {adminPreview ? (
+            <span className="reader-preview-label">Admin preview</span>
+          ) : (
+            <span lang="ml">{magazine.title}</span>
+          )}
         </button>
         {page && (
           <nav className="reader-pagination" aria-label="Magazine pages">
@@ -371,8 +383,9 @@ export default function Reader({
           onThemeChange={changeTheme}
           staffUrl={staffUrl}
           staffLabel={staffLabel}
-          installMethod={installMethod}
+          installMethod={availableInstall}
           onInstall={installApp}
+          adminPreview={adminPreview}
         />
       )}
     </div>

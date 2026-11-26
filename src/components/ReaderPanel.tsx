@@ -277,6 +277,7 @@ export default function ReaderPanel({
   staffLabel,
   installMethod,
   onInstall,
+  adminPreview = false,
 }: {
   view: PanelView | null;
   onChange: (value: PanelView | null) => void;
@@ -290,9 +291,11 @@ export default function ReaderPanel({
   staffLabel: string;
   installMethod: InstallMethod | null;
   onInstall: () => void;
+  adminPreview?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
+  const contentsList = useRef<HTMLOListElement>(null);
 
   useEffect(() => {
     const element = dialog.current;
@@ -302,9 +305,21 @@ export default function ReaderPanel({
       return;
     }
     if (!element.open) element.showModal();
-    element.scrollTop = 0;
-    title.current?.focus();
+    const scrollArea = view === "contents" ? contentsList.current : element;
+    if (scrollArea) scrollArea.scrollTop = 0;
+    title.current?.focus({ preventScroll: true });
   }, [view]);
+
+  const heading = view && (
+    <h2
+      id="reader-panel-title"
+      className="reader-panel-title"
+      tabIndex={-1}
+      ref={title}
+    >
+      {labels[view]}
+    </h2>
+  );
 
   return (
     <dialog
@@ -324,6 +339,17 @@ export default function ReaderPanel({
       {view && (
         <section className="reader-panel-inner">
           <div className="reader-panel-top">
+            {view === "contents" && (
+              <>
+                <span
+                  className="magazine-name reader-contents-brand mt-1 px-2 border-e"
+                  lang="ml"
+                >
+                  {magazine.title}
+                </span>
+                {heading}
+              </>
+            )}
             {(view === "contact" || view === "share" || view === "install") && (
               <button
                 type="button"
@@ -343,76 +369,85 @@ export default function ReaderPanel({
               <X size={23} />
             </button>
           </div>
-          <h2
-            id="reader-panel-title"
-            className="reader-panel-title"
-            tabIndex={-1}
-            ref={title}
-          >
-            {labels[view]}
-          </h2>
+          {view !== "contents" && heading}
           {view === "contents" && (
-            <>
-              <p className="reader-panel-description magazine-name" lang="ml">
-                {magazine.title}
-              </p>
-              <ol className="reader-contents-list">
-                {magazine.pages.map((item, position) => {
-                  const thumbnail = item.thumbnail;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        className="reader-contents-row"
-                        aria-current={position === index ? "page" : undefined}
-                        onClick={() => onSelect(position)}
+            <ol className="reader-contents-list" ref={contentsList}>
+              {magazine.pages.map((item, position) => {
+                const thumbnail = item.thumbnail;
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className="reader-contents-row"
+                      aria-current={position === index ? "page" : undefined}
+                      onClick={() => onSelect(position)}
+                    >
+                      <span
+                        className="reader-contents-thumbnail"
+                        aria-hidden="true"
                       >
-                        <span
-                          className="reader-contents-thumbnail"
-                          aria-hidden="true"
-                        >
-                          <BookOpen size={21} />
-                          {thumbnail && (
-                            <ResponsiveImage
-                              src={thumbnail}
-                              alt=""
-                              fill
-                              sizes="(max-width: 480px) 27vw, 144px"
-                              onError={(event) => {
-                                event.currentTarget.hidden = true;
-                              }}
-                            />
-                          )}
-                        </span>
-                        <span className="reader-contents-title">
+                        <BookOpen size={21} />
+                        {thumbnail && (
+                          <ResponsiveImage
+                            src={thumbnail}
+                            alt=""
+                            fill
+                            sizes="(max-width: 480px) 27vw, 144px"
+                            onError={(event) => {
+                              event.currentTarget.hidden = true;
+                            }}
+                          />
+                        )}
+                      </span>
+                      <span className="reader-contents-title">
+                        <div className="flex justify-between">
                           <span className="reader-contents-number">
                             Page {position + 1}
                           </span>
-                          {item.title}
-                        </span>
-                        {position === index ? (
-                          <Check size={18} aria-hidden="true" />
-                        ) : (
-                          <ChevronRight size={18} aria-hidden="true" />
+                          {item.status && (
+                            <span
+                            style={{fontSize:9, paddingTop: 0.5, paddingBottom:0.5}}
+                              className="pill reader-contents-status reader-contents-number"
+                              data-page-status={item.status}
+                            >
+                              {item.status}
+                            </span>
+                          )}
+                        </div>
+                        {item.title}
+                        {item.authorNames && (
+                          <em
+                            className="reader-contents-authors"
+                            title={item.authorNames}
+                          >
+                            {item.authorNames}
+                          </em>
                         )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            </>
+                      </span>
+                      {position === index ? (
+                        <Check size={18} aria-hidden="true" />
+                      ) : (
+                        <ChevronRight size={18} aria-hidden="true" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
           )}
           {view === "menu" && (
             <div className="reader-panel-stack">
               <div className="reader-action-list">
-                {page && (
+                {!adminPreview && page && (
                   <button type="button" onClick={() => onChange("share")}>
                     <Share2 size={20} /> Share <ChevronRight size={16} />
                   </button>
                 )}
-                <button type="button" onClick={() => onChange("contact")}>
-                  <Mail size={20} /> Contact us <ChevronRight size={16} />
-                </button>
+                {!adminPreview && (
+                  <button type="button" onClick={() => onChange("contact")}>
+                    <Mail size={20} /> Contact us <ChevronRight size={16} />
+                  </button>
+                )}
                 {installMethod && (
                   <button type="button" onClick={onInstall}>
                     <Download size={20} aria-hidden="true" /> Install app

@@ -122,6 +122,9 @@ button:disabled {
   height: 2.5rem;
   border-radius: 5px;
 }
+.reader-preview-label {
+  font: 600 0.8rem/1.2 var(--sans);
+}
 .login-link {
   display: flex;
   align-items: center;
@@ -303,7 +306,11 @@ button:disabled {
   position: absolute;
   z-index: -1;
   inset: 0;
-  background: color-mix(in srgb, var(--page-background-color, var(--surface)) 76%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--page-background-color, var(--surface)) 76%,
+    transparent
+  );
   pointer-events: none;
 }
 .magazine-paper h1,
@@ -410,7 +417,7 @@ button:disabled {
   border-radius: inherit;
   object-fit: cover;
 }
-.byline-author span {
+.byline-author > div > span {
   display: block;
 }
 .magazine-paper .byline-name {
@@ -510,9 +517,14 @@ button:disabled {
 
 .image-collage {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(0.55rem, 1.5vw, 1.25rem);
   margin-block: 1.5rem;
+}
+@media (min-width: 768px) {
+  .image-collage {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .image-collage > figure {
   min-width: 0;
@@ -644,8 +656,11 @@ html:has(
   margin-inline: auto;
   border: 1px solid var(--line);
   border-radius: 18px 18px 0 0;
+  overflow: hidden;
 }
 .reader-panel[data-view="contents"][open] {
+  display: flex;
+  flex-direction: column;
   animation: reader-sheet-up 0.22s ease-out;
 }
 @keyframes reader-drawer {
@@ -714,6 +729,32 @@ html:has(
 }
 .reader-panel-title:focus {
   outline: none;
+}
+.reader-panel[data-view="contents"] .reader-panel-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+}
+.reader-panel[data-view="contents"] .reader-panel-top {
+  position: static;
+  flex: none;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 0.55rem max(1.25rem, env(safe-area-inset-right, 0px)) 0.55rem
+    max(1.25rem, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--line);
+}
+.reader-panel[data-view="contents"] .reader-panel-title {
+  margin: 0;
+  font-size: clamp(1.55rem, 5vw, 2.15rem);
+}
+.reader-contents-brand {
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+.reader-panel[data-view="contents"] .reader-panel-close {
+  flex: none;
 }
 .reader-panel-stack {
   display: grid;
@@ -798,7 +839,14 @@ html:has(
 }
 .reader-contents-list {
   display: grid;
-  margin-top: 0.9rem;
+  align-content: start;
+  min-height: 0;
+  margin: 0;
+  padding: 0.45rem max(1.25rem, env(safe-area-inset-right, 0px))
+    max(0.8rem, env(safe-area-inset-bottom, 0px))
+    max(1.25rem, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .reader-contents-list li + li {
   border-top: 1px solid var(--line);
@@ -837,6 +885,20 @@ html:has(
 .reader-contents-title {
   overflow-wrap: anywhere;
   font: 1.08rem/1.2 var(--serif);
+}
+.reader-contents-title .reader-contents-status {
+  display: table;
+  margin-top: 0.3rem;
+  font-family: var(--sans);
+}
+.reader-contents-authors {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font: italic 0.85rem/1.2 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .reader-contents-number {
   display: block;
@@ -999,6 +1061,30 @@ html:has(
   text-decoration: underline;
   text-underline-offset: 0.2rem;
 }
+.login-password-control {
+  position: relative;
+  margin-top: 0.35rem;
+}
+.login-password-control .field {
+  padding-inline-end: 3rem;
+}
+.login-password-control input::-ms-reveal {
+  display: none;
+}
+.login-password-toggle {
+  position: absolute;
+  inset-block: 1px;
+  inset-inline-end: 1px;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  border-radius: 4px;
+  color: var(--muted);
+}
+.login-password-toggle:hover {
+  background: var(--soft);
+  color: var(--text);
+}
 .stack {
   display: grid;
   align-content: start;
@@ -1066,11 +1152,10 @@ label > .growing-textarea {
 }
 .btn {
   display: inline-flex;
-  min-height: 2.4rem;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  padding: 0.45rem 0.8rem;
+  padding: 0.3rem 0.8rem;
   border: 1px solid var(--line);
   border-radius: 5px;
   background: var(--surface);
@@ -1617,6 +1702,36 @@ button.studio-avatar[aria-expanded="true"] {
   justify-content: flex-end;
   gap: 0.45rem;
 }
+.page-list-authors {
+  display: block;
+}
+@media (max-width: 750px), (pointer: coarse) and (max-width: 1000px) {
+  .magazine-page-record {
+    grid-template-areas:
+      "title status actions"
+      "metadata metadata metadata";
+    gap: 0.1rem 0.45rem;
+  }
+  .magazine-page-record .page-list-summary {
+    display: contents;
+  }
+  .magazine-page-record .page-list-title {
+    grid-area: title;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .magazine-page-record .page-list-metadata {
+    grid-area: metadata;
+  }
+  .magazine-page-record > .pill {
+    grid-area: status;
+    white-space: nowrap;
+  }
+  .magazine-page-record .page-list-actions {
+    grid-area: actions;
+  }
+}
 .page-preview-dialog {
   width: min(68rem, calc(100% - 2rem));
   padding: 0;
@@ -2037,12 +2152,6 @@ button.page-order-handle[aria-disabled="true"] {
   }
   .record .btn {
     justify-self: start;
-  }
-  .record:has(.page-list-actions [aria-haspopup="dialog"]) {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .page-list-actions:has([aria-haspopup="dialog"]) {
-    grid-column: 1 / -1;
   }
 }
 

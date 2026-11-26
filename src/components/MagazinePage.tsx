@@ -8,8 +8,12 @@ import {
   type ReaderAuthor,
 } from "@/lib/data";
 import type { CSSProperties, ReactNode } from "react";
-import { backgroundClassTokens, isBackgroundClass } from "@/lib/page-background";
+import {
+  backgroundClassTokens,
+  isBackgroundClass,
+} from "@/lib/page-background";
 import ImageMaximize from "./ImageMaximize";
+import PersonAvatar from "./PersonAvatar";
 import ResponsiveImage from "./ResponsiveImage";
 import YouTubePlayer from "./YouTubePlayer";
 
@@ -95,7 +99,10 @@ function ContentBlock({
               sizes={sizes}
               highPriority={highPriority}
             />
-            <ImageMaximize src={src} description={block.text.trim() || "image"} />
+            <ImageMaximize
+              src={src}
+              description={block.text.trim() || "image"}
+            />
           </div>
           {block.text && <figcaption>{block.text}</figcaption>}
         </figure>
@@ -166,7 +173,7 @@ export default function MagazinePage({
           const credit = role?.trim();
           return (
             <li key={id} className="byline-author">
-              {src && (
+              {src ? (
                 <ImageMaximize
                   src={src}
                   className="byline-photo"
@@ -178,6 +185,8 @@ export default function MagazinePage({
                     sizes="48px"
                   />
                 </ImageMaximize>
+              ) : (
+                <PersonAvatar name={name} />
               )}
               <div>
                 <span className="byline-name" lang={contentLanguage(name)}>
@@ -210,12 +219,13 @@ export default function MagazinePage({
       }
       if (end > index + 1) {
         const images = blocks.slice(index, end);
-        const tileSizes =
+        const largerTileSizes =
           reader && page.template !== "Cover"
             ? images.length % 3 === 0
               ? "(max-width: 1100px) 45vw, 28vw"
               : "45vw"
-            : "(max-width: 650px) 45vw, 520px";
+            : "520px";
+        const tileSizes = `(width < 768px) 90vw, ${largerTileSizes}`;
         content.push(
           <div className="image-collage" key={block.id}>
             {images.map((image) => (
@@ -251,14 +261,18 @@ export default function MagazinePage({
   const backgroundSource =
     page.backgroundImage && blockSource(page.backgroundImage);
   const customized = Boolean(
-    page.backgroundColor || backgroundSource || page.textColor || backgroundClass,
+    page.backgroundColor ||
+    backgroundSource ||
+    page.textColor ||
+    backgroundClass,
   );
   const coverSource =
     backgroundSource ||
     (!page.backgroundColor &&
       !backgroundClass &&
       ((coverImage && blockSource(coverImage)) || cover));
-  const isCover = page.template === "Cover" && (Boolean(coverSource) || customized);
+  const isCover =
+    page.template === "Cover" && (Boolean(coverSource) || customized);
   const customStyle = customized
     ? ({
         "--page-background-color": page.backgroundColor,
@@ -266,7 +280,8 @@ export default function MagazinePage({
           page.textColor ||
           (isCover && coverSource
             ? "#fffbef"
-            : backgroundInk(page.backgroundColor) ?? (isCover ? "#fffbef" : undefined)),
+            : (backgroundInk(page.backgroundColor) ??
+              (isCover ? "#fffbef" : undefined))),
       } as CSSProperties)
     : undefined;
   const appearance = {
@@ -275,7 +290,10 @@ export default function MagazinePage({
     "data-background-class": Boolean(backgroundClass) || undefined,
   };
   const decoration = backgroundClass && (
-    <div className={`page-background-decoration ${backgroundClass}`} aria-hidden="true" />
+    <div
+      className={`page-background-decoration ${backgroundClass}`}
+      aria-hidden="true"
+    />
   );
   if (isCover) {
     const title = heading?.text || page.title;

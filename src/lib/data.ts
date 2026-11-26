@@ -76,6 +76,18 @@ export type PageContent = {
   backgroundClass?: string;
   blocks: Block[];
 };
+export function pageContributorNames(
+  page: Pick<PageContent, "authors" | "contributorNameLanguage">,
+  authorsById: ReadonlyMap<string, Pick<Author, "name" | "nameMalayalam">>,
+) {
+  return page.authors
+    .map((id) => {
+      const author = authorsById.get(id);
+      return author && contributorName(author, page.contributorNameLanguage);
+    })
+    .filter(Boolean)
+    .join(", ");
+}
 export type PageStatus = "Draft" | "In review" | "Approved" | "Published";
 export type Page = PageContent & { status: PageStatus };
 export type Magazine = {
@@ -86,6 +98,8 @@ export type Magazine = {
 };
 export type ReaderPageSummary = Pick<PageContent, "id" | "title"> & {
   thumbnail?: string;
+  authorNames?: string;
+  status?: PageStatus;
 };
 export type ReaderMagazine = Pick<Magazine, "title" | "cover"> & {
   pages: ReaderPageSummary[];

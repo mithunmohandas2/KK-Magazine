@@ -29,10 +29,17 @@ export type Account = User & {
   lockedUntil: number;
 };
 export type Session = { token: string; userId: string; expires: number };
-export type PublishedPageSummary = Pick<
+export type PageIndexEntry = Pick<
   PageContent,
-  "id" | "title" | "template" | "backgroundColor" | "backgroundImage" | "backgroundClass"
-> & { image?: Pick<Block, "src" | "assetId"> };
+  | "id"
+  | "title"
+  | "template"
+  | "authors"
+  | "contributorNameLanguage"
+  | "backgroundColor"
+  | "backgroundImage"
+  | "backgroundClass"
+> & { image?: Pick<Block, "src" | "assetId">; status?: EditorialPage["status"] };
 export type MagazineChanges = {
   pages: { position: number; page: StoredPage }[];
   authors: Author[];
@@ -42,8 +49,9 @@ export type MagazineChanges = {
 
 export interface Repository {
   magazine(): Promise<MagazineState>;
-  publishedIndex(): Promise<PublishedPageSummary[]>;
+  pageIndex(edition: "public" | "preview"): Promise<PageIndexEntry[]>;
   publishedPage(id?: string): Promise<PageContent | undefined>;
+  editorialPage(id: string): Promise<PageContent | undefined>;
   authors(ids?: string[]): Promise<Author[]>;
   authorByAccount(id: string): Promise<Author | undefined>;
   authorUsesPhoto(id: string): Promise<boolean>;
